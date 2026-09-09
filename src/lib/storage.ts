@@ -21,6 +21,13 @@ import {
   supabaseBroadcastChallenges,
   supabaseBroadcastScores
 } from './supabase'
+import {
+  apiSyncSessions,
+  apiSyncPlayers,
+  apiSyncChallenges,
+  apiSyncScores,
+  apiGetSessions
+} from './api'
 
 const KEYS = {
   CHALLENGES: 'crackvault_challenges',
@@ -209,6 +216,7 @@ export const storage = {
     if (!isIncomingCloudUpdate) {
       cloudSaveChallenges(challenges)
       supabaseBroadcastChallenges(challenges)
+      apiSyncChallenges(challenges).catch(() => {})
     }
   },
 
@@ -231,6 +239,7 @@ export const storage = {
     if (!isIncomingCloudUpdate) {
       cloudSaveSessions(sessions)
       supabaseBroadcastSessions(sessions)
+      apiSyncSessions(sessions).catch(() => {})
     }
   },
 
@@ -260,6 +269,7 @@ export const storage = {
     if (!isIncomingCloudUpdate) {
       cloudSavePlayers(clean)
       supabaseBroadcastPlayers(clean)
+      apiSyncPlayers(clean).catch(() => {})
     }
   },
 
@@ -282,6 +292,7 @@ export const storage = {
     if (!isIncomingCloudUpdate) {
       cloudSaveScores(scores)
       supabaseBroadcastScores(scores)
+      apiSyncScores(scores).catch(() => {})
     }
   },
 
@@ -460,6 +471,22 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
 
     unsubscribers.push(unsubSubSessions, unsubSubPlayers, unsubSubChallenges, unsubSubScores)
   }
+
+  // --- 3. EXPRESS + MONGODB SYNC ---
+  apiGetSessions()
+    .then((remoteSessions) => {
+      if (remoteSessions && Array.isArray(remoteSessions) && remoteSessions.length > 0) {
+        const local = storage.getSessions()
+        const map = new Map<string, GameSession>()
+        local.forEach((s) => map.set(s.id, s))
+        remoteSessions.forEach((s) => map.set(s.id, s))
+        const merged = Array.from(map.values())
+        localStorage.setItem(KEYS.SESSIONS, JSON.stringify(merged))
+        broadcastStateChange('SESSIONS_UPDATED')
+        onSyncEvent?.('SESSIONS_UPDATED')
+      }
+    })
+    .catch(() => {})
 
   return () => {
     unsubscribers.forEach((unsub) => unsub && unsub())
