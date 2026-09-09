@@ -21,7 +21,11 @@ export function getSupabaseAnonKey(): string {
     const custom = localStorage.getItem(STORAGE_KEY_SUPABASE_KEY)
     if (custom) return custom
   }
-  return import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY
+  return (
+    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+    import.meta.env.VITE_SUPABASE_ANON_KEY ||
+    DEFAULT_SUPABASE_ANON_KEY
+  )
 }
 
 export function saveSupabaseCredentials(url: string, anonKey: string) {
