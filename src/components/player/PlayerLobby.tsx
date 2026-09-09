@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { GameSession, Challenge, GamePlayer } from '../../types'
 import { sound } from '../../lib/sound'
-import { supabaseRequestSync } from '../../lib/supabase'
 import { deduplicatePlayersByName, storage } from '../../lib/storage'
-import { apiGetSessionByCode } from '../../lib/api'
+import { apiGetSessionByCode, apiGetSessions } from '../../lib/api'
 import { Shield, KeyRound, User, Users, Play, Radio, Sparkles, Loader2 } from 'lucide-react'
 
 interface PlayerLobbyProps {
@@ -35,15 +34,35 @@ export const PlayerLobby: React.FC<PlayerLobbyProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [isSearching, setIsSearching] = useState(false)
 
-  // Request cloud sync once when opening lobby
+  // Request fresh sessions from backend when opening lobby
   useEffect(() => {
-    supabaseRequestSync()
+    apiGetSessions()
+      .then((remote) => {
+        if (remote && Array.isArray(remote)) {
+          const current = storage.getSessions()
+          const map = new Map<string, GameSession>()
+          current.forEach((s) => map.set(s.id, s))
+          remote.forEach((s) => map.set(s.id, s))
+          storage.saveSessions(Array.from(map.values()))
+        }
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
     if (initialCode) {
-      setCode(initialCode.toUpperCase())
-      supabaseRequestSync()
+      const clean = initialCode.toUpperCase()
+      setCode(clean)
+      apiGetSessionByCode(clean)
+        .then((s) => {
+          if (s) {
+            const current = storage.getSessions()
+            if (!current.some((c) => c.id === s.id)) {
+              storage.saveSessions([...current, s])
+            }
+          }
+        })
+        .catch(() => {})
     }
   }, [initialCode])
 
@@ -67,7 +86,6 @@ export const PlayerLobby: React.FC<PlayerLobbyProps> = ({
     const targetSession = sessions.find((s) => s.joinCode.toUpperCase() === cleanCode)
     if (!targetSession) {
       setIsSearching(true)
-      supabaseRequestSync()
 
       apiGetSessionByCode(cleanCode)
         .then((remoteSession) => {

@@ -15,7 +15,7 @@ import {
   deduplicatePlayersByName,
   DEFAULT_SETTINGS
 } from './lib/storage'
-import { supabaseBroadcastPlayerJoin, supabaseBroadcastPlayers } from './lib/supabase'
+import { apiSavePlayer } from './lib/api'
 import { sound } from './lib/sound'
 import { Navbar } from './components/Navbar'
 import { PlayerLobby } from './components/player/PlayerLobby'
@@ -175,8 +175,7 @@ export function App() {
 
     setPlayers(updatedPlayers)
     storage.savePlayers(updatedPlayers)
-    supabaseBroadcastPlayerJoin(playerRecord)
-    supabaseBroadcastPlayers(updatedPlayers)
+    apiSavePlayer(playerRecord).catch(() => {})
 
     setActiveSessionId(targetSession.id)
     setCurrentPlayerId(finalPlayerId)

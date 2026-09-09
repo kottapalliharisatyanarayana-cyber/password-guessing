@@ -13,20 +13,14 @@ import {
   initFirebase
 } from './firebase'
 import {
-  isSupabaseConnected,
-  initSupabaseRealtime,
-  subscribeSupabaseEvent,
-  supabaseBroadcastSessions,
-  supabaseBroadcastPlayers,
-  supabaseBroadcastChallenges,
-  supabaseBroadcastScores
-} from './supabase'
-import {
   apiSyncSessions,
   apiSyncPlayers,
   apiSyncChallenges,
   apiSyncScores,
-  apiGetSessions
+  apiGetSessions,
+  apiGetPlayers,
+  apiGetChallenges,
+  apiGetScores
 } from './api'
 
 const KEYS = {
@@ -215,7 +209,6 @@ export const storage = {
     broadcastStateChange('CHALLENGES_UPDATED')
     if (!isIncomingCloudUpdate) {
       cloudSaveChallenges(challenges)
-      supabaseBroadcastChallenges(challenges)
       apiSyncChallenges(challenges).catch(() => {})
     }
   },
@@ -238,7 +231,6 @@ export const storage = {
     broadcastStateChange('SESSIONS_UPDATED')
     if (!isIncomingCloudUpdate) {
       cloudSaveSessions(sessions)
-      supabaseBroadcastSessions(sessions)
       apiSyncSessions(sessions).catch(() => {})
     }
   },
@@ -268,7 +260,6 @@ export const storage = {
     broadcastStateChange('PLAYERS_UPDATED')
     if (!isIncomingCloudUpdate) {
       cloudSavePlayers(clean)
-      supabaseBroadcastPlayers(clean)
       apiSyncPlayers(clean).catch(() => {})
     }
   },
@@ -291,7 +282,6 @@ export const storage = {
     broadcastStateChange('SCORES_UPDATED')
     if (!isIncomingCloudUpdate) {
       cloudSaveScores(scores)
-      supabaseBroadcastScores(scores)
       apiSyncScores(scores).catch(() => {})
     }
   },
@@ -343,16 +333,18 @@ export const storage = {
       cloudSavePlayers([])
       cloudSaveScores([])
       cloudSaveSettings(DEFAULT_SETTINGS)
-      supabaseBroadcastChallenges([])
-      supabaseBroadcastSessions([])
-      supabaseBroadcastPlayers([])
-      supabaseBroadcastScores([])
     }
   }
 }
 
+let isMongoOnline = true
+
 export function isCloudActive(): boolean {
-  return isFirebaseConnected() || isSupabaseConnected()
+  return isMongoOnline || isFirebaseConnected()
+}
+
+export function setMongoOnline(online: boolean) {
+  isMongoOnline = online
 }
 
 // --- CLOUD SYNC INITIALIZATION & LISTENER SUBSCRIPTION ---
@@ -364,7 +356,7 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
   unsubscribers.forEach((unsub) => unsub && unsub())
   unsubscribers = []
 
-  // --- 1. FIREBASE REALTIME LISTENER ---
+  // --- 1. FIREBASE REALTIME LISTENER (OPTIONAL FALLBACK) ---
   const db = initFirebase()
   if (db) {
     const unsubSessions = subscribeCloudSessions((remoteSessions) => {
@@ -418,75 +410,74 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
     unsubscribers.push(unsubSessions, unsubPlayers, unsubChallenges, unsubScores)
   }
 
-  // --- 2. SUPABASE REALTIME BROADCAST LISTENER ---
-  if (isSupabaseConnected()) {
-    const unsubSupabase = initSupabaseRealtime(onSyncEvent)
-    unsubscribers.push(unsubSupabase)
+  // --- 2. EXPRESS + MONGODB ATLAS REALTIME SYNC (PRIMARY) ---
+  let isSyncing = false
+  const syncWithMongoBackend = async () => {
+    if (isSyncing) return
+    isSyncing = true
+    try {
+      const [remoteSessions, remotePlayers, remoteChallenges, remoteScores] = await Promise.all([
+        apiGetSessions(),
+        apiGetPlayers(),
+        apiGetChallenges(),
+        apiGetScores()
+      ])
 
-    const unsubSubSessions = subscribeSupabaseEvent('SESSIONS_SYNC', (remoteSessions) => {
-      isIncomingCloudUpdate = true
-      try {
-        localStorage.setItem(KEYS.SESSIONS, JSON.stringify(remoteSessions))
-        broadcastStateChange('SESSIONS_UPDATED')
-        onSyncEvent?.('SESSIONS_UPDATED')
-      } finally {
-        isIncomingCloudUpdate = false
-      }
-    })
+      isMongoOnline = remoteSessions !== null || remotePlayers !== null
 
-    const unsubSubPlayers = subscribeSupabaseEvent('PLAYERS_SYNC', (remotePlayers: GamePlayer[]) => {
-      isIncomingCloudUpdate = true
-      try {
-        const local = storage.getPlayers()
-        const merged = deduplicatePlayers([...local, ...remotePlayers])
-        localStorage.setItem(KEYS.PLAYERS, JSON.stringify(merged))
-        broadcastStateChange('PLAYERS_UPDATED')
-        onSyncEvent?.('PLAYERS_UPDATED')
-      } finally {
-        isIncomingCloudUpdate = false
-      }
-    })
-
-    const unsubSubChallenges = subscribeSupabaseEvent('CHALLENGES_SYNC', (remoteChallenges) => {
-      isIncomingCloudUpdate = true
-      try {
-        localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(remoteChallenges))
-        broadcastStateChange('CHALLENGES_UPDATED')
-        onSyncEvent?.('CHALLENGES_UPDATED')
-      } finally {
-        isIncomingCloudUpdate = false
-      }
-    })
-
-    const unsubSubScores = subscribeSupabaseEvent('SCORES_SYNC', (remoteScores) => {
-      isIncomingCloudUpdate = true
-      try {
-        localStorage.setItem(KEYS.SCORES, JSON.stringify(remoteScores))
-        broadcastStateChange('SCORES_UPDATED')
-        onSyncEvent?.('SCORES_UPDATED')
-      } finally {
-        isIncomingCloudUpdate = false
-      }
-    })
-
-    unsubscribers.push(unsubSubSessions, unsubSubPlayers, unsubSubChallenges, unsubSubScores)
-  }
-
-  // --- 3. EXPRESS + MONGODB SYNC ---
-  apiGetSessions()
-    .then((remoteSessions) => {
-      if (remoteSessions && Array.isArray(remoteSessions) && remoteSessions.length > 0) {
+      if (remoteSessions && Array.isArray(remoteSessions)) {
         const local = storage.getSessions()
         const map = new Map<string, GameSession>()
         local.forEach((s) => map.set(s.id, s))
         remoteSessions.forEach((s) => map.set(s.id, s))
         const merged = Array.from(map.values())
-        localStorage.setItem(KEYS.SESSIONS, JSON.stringify(merged))
-        broadcastStateChange('SESSIONS_UPDATED')
-        onSyncEvent?.('SESSIONS_UPDATED')
+        if (JSON.stringify(merged) !== JSON.stringify(local)) {
+          localStorage.setItem(KEYS.SESSIONS, JSON.stringify(merged))
+          broadcastStateChange('SESSIONS_UPDATED')
+          onSyncEvent?.('SESSIONS_UPDATED')
+        }
       }
-    })
-    .catch(() => {})
+
+      if (remotePlayers && Array.isArray(remotePlayers)) {
+        const local = storage.getPlayers()
+        const merged = deduplicatePlayers([...local, ...remotePlayers])
+        if (merged.length !== local.length || JSON.stringify(merged) !== JSON.stringify(local)) {
+          localStorage.setItem(KEYS.PLAYERS, JSON.stringify(merged))
+          broadcastStateChange('PLAYERS_UPDATED')
+          onSyncEvent?.('PLAYERS_UPDATED')
+        }
+      }
+
+      if (remoteChallenges && Array.isArray(remoteChallenges) && remoteChallenges.length > 0) {
+        const local = storage.getChallenges()
+        if (local.length === 0) {
+          localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(remoteChallenges))
+          broadcastStateChange('CHALLENGES_UPDATED')
+          onSyncEvent?.('CHALLENGES_UPDATED')
+        }
+      }
+
+      if (remoteScores && Array.isArray(remoteScores) && remoteScores.length > 0) {
+        const local = storage.getScores()
+        if (remoteScores.length > local.length) {
+          localStorage.setItem(KEYS.SCORES, JSON.stringify(remoteScores))
+          broadcastStateChange('SCORES_UPDATED')
+          onSyncEvent?.('SCORES_UPDATED')
+        }
+      }
+    } catch {
+      isMongoOnline = false
+    } finally {
+      isSyncing = false
+    }
+  }
+
+  // Initial sync immediately
+  syncWithMongoBackend()
+
+  // Real-time polling every 1.5 seconds for cross-device synchronization
+  const pollInterval = setInterval(syncWithMongoBackend, 1500)
+  unsubscribers.push(() => clearInterval(pollInterval))
 
   return () => {
     unsubscribers.forEach((unsub) => unsub && unsub())

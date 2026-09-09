@@ -43,9 +43,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               background: cloudConnected ? undefined : 'rgba(255,255,255,0.05)',
               color: cloudConnected ? undefined : 'var(--text-muted)'
             }}
-            title={cloudConnected ? 'Multiplayer active across all laptops/phones' : 'Local storage mode'}
+            title={cloudConnected ? 'Connected to MongoDB Atlas & Express backend' : 'Local storage mode'}
           >
-            {cloudConnected ? '⚡ CLOUD SYNC' : 'LOCAL'}
+            {cloudConnected ? '⚡ MONGO ATLAS' : 'LOCAL'}
           </span>
         </div>
       </div>

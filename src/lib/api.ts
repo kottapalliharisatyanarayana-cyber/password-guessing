@@ -27,7 +27,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 // Health
-export async function apiCheckHealth(): Promise<{ status: string; database?: { status: string } } | null> {
+export async function apiCheckHealth(): Promise<{
+  status: string
+  database?: { status: string; name?: string; host?: string }
+} | null> {
   return request('/health')
 }
 

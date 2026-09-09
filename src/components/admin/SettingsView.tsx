@@ -8,14 +8,7 @@ import {
   isFirebaseConnected,
   FirebaseConfig
 } from '../../lib/firebase'
-import {
-  getSupabaseUrl,
-  getSupabaseAnonKey,
-  saveSupabaseCredentials,
-  clearSupabaseCredentials,
-  isSupabaseConnected,
-  DEFAULT_SUPABASE_URL
-} from '../../lib/supabase'
+import { apiCheckHealth } from '../../lib/api'
 import {
   Settings,
   Lock,
@@ -27,7 +20,8 @@ import {
   ExternalLink,
   Zap,
   Info,
-  Radio
+  Radio,
+  Database
 } from 'lucide-react'
 
 interface SettingsViewProps {
@@ -53,11 +47,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [defaultTime, setDefaultTime] = useState(settings.defaultTimeLimit)
   const [soundEnabled, setSoundEnabled] = useState(settings.soundEnabled)
 
-  // Supabase Realtime State
-  const [supabaseUrl, setSupabaseUrl] = useState(getSupabaseUrl() || DEFAULT_SUPABASE_URL)
-  const [supabaseAnonKey, setSupabaseAnonKey] = useState(getSupabaseAnonKey())
-  const [supabaseConnected, setSupabaseConnected] = useState(isSupabaseConnected())
-  const [supabaseMessage, setSupabaseMessage] = useState<string | null>(null)
+  // MongoDB Atlas State
+  const [mongoStatus, setMongoStatus] = useState<{
+    connected: boolean
+    host?: string
+    database?: string
+    checking?: boolean
+    message?: string
+  }>({
+    connected: true,
+    host: 'cluster0.18sjvym.mongodb.net',
+    database: 'crackvault'
+  })
 
   // Firebase Realtime State
   const [firebaseConnected, setFirebaseConnected] = useState(isFirebaseConnected())
@@ -67,6 +68,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [rawSnippet, setRawSnippet] = useState('')
   const [cloudMessage, setCloudMessage] = useState<string | null>(null)
 
+  const checkMongoHealth = async () => {
+    setMongoStatus((prev) => ({ ...prev, checking: true }))
+    try {
+      const res = await apiCheckHealth()
+      if (res && res.database?.status === 'connected') {
+        setMongoStatus({
+          connected: true,
+          host: res.database.host || 'cluster0.18sjvym.mongodb.net',
+          database: res.database.name || 'crackvault',
+          checking: false,
+          message: '⚡ Connected to MongoDB Atlas cluster successfully!'
+        })
+        sound.playClick()
+      } else {
+        setMongoStatus({
+          connected: false,
+          checking: false,
+          message: 'Backend server is active, but MongoDB is in fallback mode.'
+        })
+      }
+    } catch {
+      setMongoStatus({
+        connected: false,
+        checking: false,
+        message: 'Could not reach Express backend at /api/health'
+      })
+    }
+  }
+
   useEffect(() => {
     const existing = getFirebaseConfig()
     if (existing) {
@@ -75,36 +105,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setProjectId(existing.projectId || '')
     }
     setFirebaseConnected(isFirebaseConnected())
-    setSupabaseConnected(isSupabaseConnected())
+    checkMongoHealth()
   }, [])
-
-  const handleSaveSupabase = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!supabaseUrl.trim() || !supabaseAnonKey.trim()) {
-      setSupabaseMessage('Please enter your Supabase URL and anon public key.')
-      return
-    }
-
-    saveSupabaseCredentials(supabaseUrl, supabaseAnonKey)
-    const connected = isSupabaseConnected()
-    setSupabaseConnected(connected)
-    sound.playClick()
-    if (connected) {
-      setSupabaseMessage('⚡ Supabase Realtime Connected! All devices and phones will now sync live rooms across the internet.')
-      onNotify('Supabase Realtime Connected')
-    } else {
-      setSupabaseMessage('Could not connect. Please verify your Supabase anon key.')
-    }
-  }
-
-  const handleClearSupabase = () => {
-    clearSupabaseCredentials()
-    setSupabaseAnonKey('')
-    setSupabaseConnected(false)
-    setSupabaseMessage('Supabase credentials removed.')
-    sound.playClick()
-    onNotify('Supabase disconnected')
-  }
 
   const handleUpdateCredentials = (e: React.FormEvent) => {
     e.preventDefault()
@@ -216,138 +218,183 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   }
 
-  const anyCloudLive = supabaseConnected || firebaseConnected
+  const anyCloudLive = mongoStatus.connected || firebaseConnected
 
   return (
     <div style={{ maxWidth: '820px' }}>
       <div style={{ marginBottom: '2rem' }}>
         <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#fff' }}>Platform Settings</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-          Configure administrator access, cross-device multiplayer cloud sync (Supabase or Firebase), session durations, and audio feedback.
+          Configure administrator access, MongoDB Atlas cloud database synchronization, session durations, and audio feedback.
         </p>
       </div>
 
       <div style={{ display: 'grid', gap: '1.5rem' }}>
-        {/* PRIMARY: Supabase Realtime Multiplayer */}
-        <div className="glass-panel" style={{ padding: '1.75rem', borderColor: supabaseConnected ? 'rgba(0,245,160,0.4)' : 'rgba(62,207,142,0.3)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
-              <Radio size={20} style={{ color: '#3ECF8E' }} />
-              <span>Cross-Device Multiplayer (Supabase Realtime)</span>
-            </h3>
-            <span
-              className={`badge ${supabaseConnected ? 'badge-mint' : ''}`}
+        {/* PRIMARY: MongoDB Atlas Cloud Database */}
+        <div
+          className="glass-panel"
+          style={{
+            padding: '1.75rem',
+            borderColor: mongoStatus.connected ? 'rgba(0,245,160,0.4)' : 'rgba(255,255,255,0.1)'
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '0.5rem'
+            }}
+          >
+            <h3
               style={{
-                fontSize: '0.72rem',
-                background: supabaseConnected ? undefined : 'rgba(255,255,255,0.06)',
-                color: supabaseConnected ? undefined : 'var(--text-muted)'
+                fontSize: '1.1rem',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                margin: 0
               }}
             >
-              {supabaseConnected ? '🟢 SUPABASE REALTIME LIVE' : '⚪ NOT CONNECTED'}
+              <Database size={20} style={{ color: 'var(--neon-mint)' }} />
+              <span>MongoDB Atlas Cloud Database &amp; Backend</span>
+            </h3>
+            <span
+              className={`badge ${mongoStatus.connected ? 'badge-mint' : ''}`}
+              style={{
+                fontSize: '0.72rem',
+                background: mongoStatus.connected ? undefined : 'rgba(255,255,255,0.06)',
+                color: mongoStatus.connected ? undefined : 'var(--text-muted)'
+              }}
+            >
+              {mongoStatus.connected ? '🟢 CONNECTED TO MONGO ATLAS' : '⚪ DISCONNECTED'}
             </span>
           </div>
 
-          <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1.25rem', lineHeight: '1.45' }}>
-            Your project is configured for <strong>Supabase</strong>! Paste your project's <code>anon</code> public API key below to activate live multiplayer rooms across any phone, laptop, or computer.
+          <p
+            style={{
+              fontSize: '0.82rem',
+              color: 'var(--text-muted)',
+              marginBottom: '1.25rem',
+              lineHeight: '1.45'
+            }}
+          >
+            Your game sessions, player lobbies, mission challenges, and leaderboard scores are persisted in
+            real time to your dedicated <strong>MongoDB Atlas</strong> cluster.
           </p>
 
-          {supabaseMessage && (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '1rem',
+              marginBottom: '1.25rem'
+            }}
+          >
+            <div
+              style={{
+                padding: '0.85rem 1rem',
+                background: 'rgba(255,255,255,0.03)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid rgba(255,255,255,0.06)'
+              }}
+            >
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                Cluster Shard Host
+              </div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff', marginTop: '0.2rem' }}>
+                {mongoStatus.host || 'cluster0.18sjvym.mongodb.net'}
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: '0.85rem 1rem',
+                background: 'rgba(255,255,255,0.03)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid rgba(255,255,255,0.06)'
+              }}
+            >
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                Database Name
+              </div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--neon-cyan)', marginTop: '0.2rem' }}>
+                {mongoStatus.database || 'crackvault'}
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: '0.85rem 1rem',
+                background: 'rgba(255,255,255,0.03)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid rgba(255,255,255,0.06)'
+              }}
+            >
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                Collections
+              </div>
+              <div style={{ fontSize: '0.82rem', color: 'var(--neon-mint)', marginTop: '0.2rem' }}>
+                sessions · players · challenges · scores
+              </div>
+            </div>
+          </div>
+
+          {mongoStatus.message && (
             <div
               style={{
                 padding: '0.65rem 1rem',
-                background: supabaseConnected ? 'rgba(0,245,160,0.12)' : 'rgba(62,207,142,0.12)',
-                border: `1px solid ${supabaseConnected ? 'var(--neon-mint)' : '#3ECF8E'}`,
+                background: mongoStatus.connected ? 'rgba(0,245,160,0.1)' : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${mongoStatus.connected ? 'var(--neon-mint)' : 'rgba(255,255,255,0.1)'}`,
                 color: '#fff',
                 borderRadius: 'var(--radius-md)',
                 fontSize: '0.82rem',
                 marginBottom: '1rem'
               }}
             >
-              {supabaseMessage}
+              {mongoStatus.message}
             </div>
           )}
 
-          <form onSubmit={handleSaveSupabase}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.5fr', gap: '1rem', marginBottom: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
-                  Supabase Project URL
-                </label>
-                <input
-                  type="text"
-                  className="input-field"
-                  value={supabaseUrl}
-                  onChange={(e) => setSupabaseUrl(e.target.value)}
-                  placeholder="https://dxygamtlhojyblzwbsyf.supabase.co"
-                  required
-                />
-              </div>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={checkMongoHealth}
+              disabled={mongoStatus.checking}
+              style={{
+                padding: '0.6rem 1.25rem',
+                fontSize: '0.82rem',
+                background: 'linear-gradient(135deg, #00F5A0, #00D8F6)',
+                color: '#000',
+                fontWeight: 700
+              }}
+            >
+              <Zap size={14} />
+              <span>{mongoStatus.checking ? 'Testing...' : 'Test Atlas Connection'}</span>
+            </button>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
-                  Supabase Anon (Public) Key *
-                </label>
-                <input
-                  type="password"
-                  className="input-field"
-                  value={supabaseAnonKey}
-                  onChange={(e) => setSupabaseAnonKey(e.target.value)}
-                  placeholder="eyJhbGciOiJIUzI1NiIsIn..."
-                  required
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-              <button
-                type="submit"
-                className="btn-primary"
-                style={{
-                  padding: '0.6rem 1.25rem',
-                  fontSize: '0.82rem',
-                  background: 'linear-gradient(135deg, #3ECF8E, #00F5A0)',
-                  color: '#000',
-                  fontWeight: 700
-                }}
-              >
-                <Zap size={14} />
-                <span>Save &amp; Connect Supabase Realtime</span>
-              </button>
-
-              {supabaseConnected && (
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={handleClearSupabase}
-                  style={{ padding: '0.6rem 1rem', fontSize: '0.82rem' }}
-                >
-                  Disconnect
-                </button>
-              )}
-
-              <a
-                href="https://supabase.com/dashboard/project/dxygamtlhojyblzwbsyf/settings/api"
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  marginLeft: 'auto',
-                  fontSize: '0.76rem',
-                  color: '#3ECF8E',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.3rem',
-                  textDecoration: 'none'
-                }}
-              >
-                <span>Get Anon Key in Supabase Dashboard</span>
-                <ExternalLink size={12} />
-              </a>
-            </div>
-          </form>
+            <a
+              href="https://cloud.mongodb.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-secondary"
+              style={{
+                padding: '0.6rem 1rem',
+                fontSize: '0.82rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem'
+              }}
+            >
+              <span>MongoDB Atlas Cloud Console</span>
+              <ExternalLink size={13} />
+            </a>
+          </div>
         </div>
 
         {/* SECONDARY: Firebase Cloud Sync */}
-        <div className="glass-panel" style={{ padding: '1.5rem', opacity: supabaseConnected ? 0.75 : 1 }}>
+        <div className="glass-panel" style={{ padding: '1.5rem', opacity: mongoStatus.connected ? 0.75 : 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
               <Cloud size={18} style={{ color: firebaseConnected ? 'var(--neon-mint)' : 'var(--neon-cyan)' }} />
@@ -366,7 +413,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
 
           <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-            Optional fallback: If you prefer Google Firebase over Supabase, you can paste your Firebase credentials here.
+            Optional fallback: If you prefer Google Firebase over MongoDB Atlas, you can paste your Firebase credentials here.
           </p>
 
           {cloudMessage && (
