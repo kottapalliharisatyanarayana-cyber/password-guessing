@@ -70,6 +70,18 @@ router.post('/batch', async (req, res) => {
   }
 })
 
+// DELETE /api/challenges/all - clear all challenges
+router.delete('/all', async (req, res) => {
+  memoryChallenges.clear()
+  try {
+    await Challenge.deleteMany({})
+    return res.json({ success: true, message: 'All challenges deleted from MongoDB' })
+  } catch (err) {
+    console.warn('⚠️ [Challenges API] MongoDB delete error:', err.message)
+    return res.status(500).json({ error: err.message })
+  }
+})
+
 // DELETE /api/challenges/:id
 router.delete('/:id', async (req, res) => {
   memoryChallenges.delete(req.params.id)

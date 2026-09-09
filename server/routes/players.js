@@ -80,6 +80,32 @@ router.post('/batch', async (req, res) => {
   }
 })
 
+// DELETE /api/players/all - clear all players
+router.delete('/all', async (req, res) => {
+  memoryPlayers.clear()
+  try {
+    await Player.deleteMany({})
+    return res.json({ success: true, message: 'All players deleted from MongoDB' })
+  } catch (err) {
+    console.warn('⚠️ [Players API] MongoDB delete error:', err.message)
+    return res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /api/players/session/:sessionId - remove all players for a specific session
+router.delete('/session/:sessionId', async (req, res) => {
+  const sessId = req.params.sessionId
+  for (const [id, p] of memoryPlayers.entries()) {
+    if (p.sessionId === sessId) memoryPlayers.delete(id)
+  }
+  try {
+    await Player.deleteMany({ sessionId: sessId })
+  } catch (err) {
+    console.warn('⚠️ [Players API] MongoDB delete session players error:', err.message)
+  }
+  return res.json({ success: true, sessionId: sessId })
+})
+
 // DELETE /api/players/:id
 router.delete('/:id', async (req, res) => {
   memoryPlayers.delete(req.params.id)

@@ -1,4 +1,4 @@
-import { GameSession, Challenge, GamePlayer, ScoreEntry } from '../types'
+import { GameSession, Challenge, GamePlayer, ScoreEntry, AppSettings } from '../types'
 
 export function getApiBaseUrl(): string {
   if (typeof window === 'undefined') return '/api'
@@ -24,11 +24,10 @@ export function getApiBaseUrl(): string {
   return '/api'
 }
 
-export const API_BASE_URL = getApiBaseUrl()
-
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T | null> {
   try {
-    const url = `${API_BASE_URL}${endpoint}`
+    const baseUrl = getApiBaseUrl()
+    const url = `${baseUrl}${endpoint}`
     const res = await fetch(url, {
       ...options,
       headers: {
@@ -37,16 +36,18 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       }
     })
     if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      console.warn(`⚠️ [API Error] ${options.method || 'GET'} ${url} returned ${res.status}:`, text)
       return null
     }
     return (await res.json()) as T
-  } catch {
-    // Return null if backend server is not running or unreachable
+  } catch (err: any) {
+    console.warn(`⚠️ [API Network Error] ${endpoint}:`, err?.message || err)
     return null
   }
 }
 
-// Health
+// Health Check
 export async function apiCheckHealth(): Promise<{
   status: string
   database?: { status: string; name?: string; host?: string }
@@ -91,6 +92,13 @@ export async function apiDeleteSession(id: string): Promise<boolean> {
   return !!res?.success
 }
 
+export async function apiClearSessions(): Promise<boolean> {
+  const res = await request<{ success: boolean }>('/sessions/all', {
+    method: 'DELETE'
+  })
+  return !!res?.success
+}
+
 // Players
 export async function apiGetPlayers(sessionId?: string): Promise<GamePlayer[] | null> {
   const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ''
@@ -111,9 +119,37 @@ export async function apiSyncPlayers(players: GamePlayer[]): Promise<GamePlayer[
   })
 }
 
+export async function apiDeletePlayer(id: string): Promise<boolean> {
+  const res = await request<{ success: boolean }>(`/players/${encodeURIComponent(id)}`, {
+    method: 'DELETE'
+  })
+  return !!res?.success
+}
+
+export async function apiClearSessionPlayers(sessionId: string): Promise<boolean> {
+  const res = await request<{ success: boolean }>(`/players/session/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE'
+  })
+  return !!res?.success
+}
+
+export async function apiClearAllPlayers(): Promise<boolean> {
+  const res = await request<{ success: boolean }>('/players/all', {
+    method: 'DELETE'
+  })
+  return !!res?.success
+}
+
 // Challenges
 export async function apiGetChallenges(): Promise<Challenge[] | null> {
   return request<Challenge[]>('/challenges')
+}
+
+export async function apiSaveChallenge(challenge: Challenge): Promise<Challenge | null> {
+  return request<Challenge>('/challenges', {
+    method: 'POST',
+    body: JSON.stringify(challenge)
+  })
 }
 
 export async function apiSyncChallenges(challenges: Challenge[]): Promise<Challenge[] | null> {
@@ -121,6 +157,20 @@ export async function apiSyncChallenges(challenges: Challenge[]): Promise<Challe
     method: 'POST',
     body: JSON.stringify(challenges)
   })
+}
+
+export async function apiDeleteChallenge(id: string): Promise<boolean> {
+  const res = await request<{ success: boolean }>(`/challenges/${encodeURIComponent(id)}`, {
+    method: 'DELETE'
+  })
+  return !!res?.success
+}
+
+export async function apiClearChallenges(): Promise<boolean> {
+  const res = await request<{ success: boolean }>('/challenges/all', {
+    method: 'DELETE'
+  })
+  return !!res?.success
 }
 
 // Scores
@@ -141,4 +191,31 @@ export async function apiSyncScores(scores: ScoreEntry[]): Promise<ScoreEntry[] 
     method: 'POST',
     body: JSON.stringify(scores)
   })
+}
+
+export async function apiClearScores(): Promise<boolean> {
+  const res = await request<{ success: boolean }>('/scores/all', {
+    method: 'DELETE'
+  })
+  return !!res?.success
+}
+
+// Settings
+export async function apiGetSettings(): Promise<AppSettings | null> {
+  return request<AppSettings>('/settings')
+}
+
+export async function apiSaveSettings(settings: AppSettings): Promise<AppSettings | null> {
+  return request<AppSettings>('/settings', {
+    method: 'POST',
+    body: JSON.stringify(settings)
+  })
+}
+
+// Global System Reset
+export async function apiResetAll(): Promise<boolean> {
+  const res = await request<{ success: boolean }>('/reset-all', {
+    method: 'POST'
+  })
+  return !!res?.success
 }

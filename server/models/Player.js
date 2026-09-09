@@ -16,7 +16,8 @@ const playerSchema = new mongoose.Schema(
     hintsUsed: { type: Number, default: 0 },
     revealedHints: { type: [Number], default: [] },
     solveTime: { type: Number },
-    score: { type: Number, default: 0 }
+    score: { type: Number, default: 0 },
+    joinedAt: { type: String }
   },
   {
     timestamps: true,

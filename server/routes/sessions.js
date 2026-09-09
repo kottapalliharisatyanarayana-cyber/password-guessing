@@ -83,7 +83,7 @@ router.post('/', async (req, res) => {
   // Always update in-memory immediately
   memorySessions.set(data.id, data)
 
-  // Persist to MongoDB Atlas asynchronously
+  // Persist to MongoDB Atlas
   try {
     const session = await Session.findOneAndUpdate(
       { id: data.id },
@@ -147,6 +147,18 @@ router.patch('/:id', async (req, res) => {
   }
 
   return res.json(updated)
+})
+
+// DELETE /api/sessions/all - clear all sessions
+router.delete('/all', async (req, res) => {
+  memorySessions.clear()
+  try {
+    await Session.deleteMany({})
+    return res.json({ success: true, message: 'All sessions deleted from MongoDB' })
+  } catch (err) {
+    console.warn('⚠️ [Sessions API] MongoDB delete error:', err.message)
+    return res.status(500).json({ error: err.message })
+  }
 })
 
 // DELETE /api/sessions/:id - remove session

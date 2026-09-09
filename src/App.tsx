@@ -15,7 +15,19 @@ import {
   deduplicatePlayersByName,
   DEFAULT_SETTINGS
 } from './lib/storage'
-import { apiSavePlayer } from './lib/api'
+import {
+  apiSavePlayer,
+  apiSaveSession,
+  apiUpdateSession,
+  apiDeleteSession,
+  apiSaveChallenge,
+  apiDeleteChallenge,
+  apiDeletePlayer,
+  apiClearSessionPlayers,
+  apiClearScores,
+  apiSaveSettings,
+  apiResetAll
+} from './lib/api'
 import { sound } from './lib/sound'
 import { PlayerPage } from './pages/PlayerPage'
 import { AdminPage } from './pages/AdminPage'
@@ -347,6 +359,7 @@ export function App() {
     setSessions(updated)
     storage.saveSessions(updated)
     storage.saveChallenges(challenges)
+    apiSaveSession(newSession).catch(() => {})
     showToast(`Room ${code} launched in Lobby mode`)
   }
 
@@ -362,6 +375,7 @@ export function App() {
     )
     setPlayers(updatedPlayers)
     storage.savePlayers(updatedPlayers)
+    apiUpdateSession(sessionId, { status: 'playing', startedAt: Date.now() }).catch(() => {})
 
     showToast('Session Started! Contestants moved into the arena.')
   }
@@ -372,6 +386,7 @@ export function App() {
     )
     setSessions(updated)
     storage.saveSessions(updated)
+    apiUpdateSession(sessionId, { status: 'paused' }).catch(() => {})
     showToast('Mission broadcast paused — all contestant clocks frozen')
   }
 
@@ -381,6 +396,7 @@ export function App() {
     )
     setSessions(updated)
     storage.saveSessions(updated)
+    apiUpdateSession(sessionId, { status: 'playing' }).catch(() => {})
     showToast('Mission broadcast resumed!')
   }
 
@@ -410,6 +426,13 @@ export function App() {
     )
     setPlayers(updatedPlayers)
     storage.savePlayers(updatedPlayers)
+    apiUpdateSession(sessionId, {
+      status: 'lobby',
+      remainingSeconds: sTarget.totalSeconds,
+      winnerName: undefined,
+      winnerScore: undefined,
+      forceUnlockedHints: []
+    }).catch(() => {})
     showToast('Broadcast stopped — contestants returned to waiting lobby')
   }
 
@@ -443,6 +466,7 @@ export function App() {
     )
     setSessions(updatedSessions)
     storage.saveSessions(updatedSessions)
+    apiUpdateSession(sessionId, { forceUnlockedHints: updatedForce }).catch(() => {})
     sound.playHintUnlock()
     showToast(`⚡ Admin broadcast: ${nextIdx === 5 ? 'Visual Dossier' : `Clue #${nextIdx + 1}`} revealed to all contestants!`)
   }
@@ -452,6 +476,7 @@ export function App() {
     const updated = sessions.filter((s) => s.id !== sessionId)
     setSessions(updated)
     storage.saveSessions(updated)
+    apiDeleteSession(sessionId).catch(() => {})
 
     const updatedPlayers = players.filter(
       (p) =>
@@ -468,26 +493,31 @@ export function App() {
     const updated = exists ? challenges.map((c) => (c.id === ch.id ? ch : c)) : [ch, ...challenges]
     setChallenges(updated)
     storage.saveChallenges(updated)
+    apiSaveChallenge(ch).catch(() => {})
   }
 
   const handleDeleteChallenge = (id: string) => {
     const updated = challenges.filter((c) => c.id !== id)
     setChallenges(updated)
     storage.saveChallenges(updated)
+    apiDeleteChallenge(id).catch(() => {})
   }
 
   const handleClearLeaderboard = () => {
     setScores([])
     storage.saveScores([])
+    apiClearScores().catch(() => {})
   }
 
   const handleUpdateSettings = (s: AppSettings) => {
     setSettings(s)
     storage.saveSettings(s)
+    apiSaveSettings(s).catch(() => {})
   }
 
   const handleResetAll = () => {
     storage.resetAll()
+    apiResetAll().catch(() => {})
     reloadData()
     setActiveSessionId(null)
     setCurrentPlayerId(null)
@@ -515,6 +545,7 @@ export function App() {
     const updated = [...players, newBotPlayer]
     setPlayers(updated)
     storage.savePlayers(updated)
+    apiSavePlayer(newBotPlayer).catch(() => {})
     sound.playClick()
     showToast(`Bot competitor "${randName}" simulated in room!`)
   }
@@ -523,6 +554,7 @@ export function App() {
     const updated = players.filter((p) => p.id !== playerId)
     setPlayers(updated)
     storage.savePlayers(updated)
+    apiDeletePlayer(playerId).catch(() => {})
     showToast('Contestant removed from room')
   }
 
@@ -535,6 +567,7 @@ export function App() {
     )
     setPlayers(updated)
     storage.savePlayers(updated)
+    apiClearSessionPlayers(sessionId).catch(() => {})
     showToast('Room roster cleared')
   }
 

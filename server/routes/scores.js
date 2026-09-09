@@ -22,22 +22,31 @@ router.get('/', async (req, res) => {
 // POST /api/scores
 router.post('/', async (req, res) => {
   const data = req.body
-  if (!data.id || !data.sessionId || !data.playerName) {
-    return res.status(400).json({ error: 'Score id, sessionId, and playerName are required' })
+  if (!data.id || !data.playerName) {
+    return res.status(400).json({ error: 'Score id and playerName are required' })
   }
 
-  memoryScores.set(data.id, data)
+  const normalized = {
+    ...data,
+    sessionId: data.sessionId || 'global',
+    timeTaken: data.timeTaken ?? data.solveTime ?? 0,
+    solveTime: data.solveTime ?? data.timeTaken ?? 0,
+    hintsRevealed: data.hintsRevealed ?? data.hintsUsed ?? 0,
+    hintsUsed: data.hintsUsed ?? data.hintsRevealed ?? 0
+  }
+
+  memoryScores.set(normalized.id, normalized)
 
   try {
     const score = await Score.findOneAndUpdate(
-      { id: data.id },
-      { $set: data },
+      { id: normalized.id },
+      { $set: normalized },
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     )
     return res.json(score)
   } catch (err) {
     console.warn('⚠️ [Scores API] MongoDB save error, served from memory:', err.message)
-    return res.json(data)
+    return res.json(normalized)
   }
 })
 
@@ -49,17 +58,37 @@ router.post('/batch', async (req, res) => {
   }
 
   scores.forEach((s) => {
-    if (s.id) memoryScores.set(s.id, s)
+    if (s.id) {
+      const norm = {
+        ...s,
+        sessionId: s.sessionId || 'global',
+        timeTaken: s.timeTaken ?? s.solveTime ?? 0,
+        solveTime: s.solveTime ?? s.timeTaken ?? 0,
+        hintsRevealed: s.hintsRevealed ?? s.hintsUsed ?? 0,
+        hintsUsed: s.hintsUsed ?? s.hintsRevealed ?? 0
+      }
+      memoryScores.set(s.id, norm)
+    }
   })
 
   try {
-    const ops = scores.map((s) => ({
-      updateOne: {
-        filter: { id: s.id },
-        update: { $set: s },
-        upsert: true
+    const ops = scores.map((s) => {
+      const norm = {
+        ...s,
+        sessionId: s.sessionId || 'global',
+        timeTaken: s.timeTaken ?? s.solveTime ?? 0,
+        solveTime: s.solveTime ?? s.timeTaken ?? 0,
+        hintsRevealed: s.hintsRevealed ?? s.hintsUsed ?? 0,
+        hintsUsed: s.hintsUsed ?? s.hintsRevealed ?? 0
       }
-    }))
+      return {
+        updateOne: {
+          filter: { id: norm.id },
+          update: { $set: norm },
+          upsert: true
+        }
+      }
+    })
 
     if (ops.length > 0) {
       await Score.bulkWrite(ops)
@@ -71,6 +100,29 @@ router.post('/batch', async (req, res) => {
     console.warn('⚠️ [Scores API] MongoDB bulkWrite error:', err.message)
     return res.json(Array.from(memoryScores.values()))
   }
+})
+
+// DELETE /api/scores/all - clear all scores
+router.delete('/all', async (req, res) => {
+  memoryScores.clear()
+  try {
+    await Score.deleteMany({})
+    return res.json({ success: true, message: 'All scores deleted from MongoDB' })
+  } catch (err) {
+    console.warn('⚠️ [Scores API] MongoDB delete error:', err.message)
+    return res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /api/scores/:id
+router.delete('/:id', async (req, res) => {
+  memoryScores.delete(req.params.id)
+  try {
+    await Score.deleteOne({ id: req.params.id })
+  } catch (err) {
+    console.warn('⚠️ [Scores API] MongoDB delete error:', err.message)
+  }
+  return res.json({ success: true, id: req.params.id })
 })
 
 export default router

@@ -4,34 +4,41 @@ import mongoose from 'mongoose'
 import dotenv from 'dotenv'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import dns from 'dns'
 
 import sessionsRouter from './routes/sessions.js'
 import playersRouter from './routes/players.js'
 import challengesRouter from './routes/challenges.js'
 import scoresRouter from './routes/scores.js'
+import settingsRouter from './routes/settings.js'
 
-import dns from 'dns'
+import { Session } from './models/Session.js'
+import { Player } from './models/Player.js'
+import { Challenge } from './models/Challenge.js'
+import { Score } from './models/Score.js'
 
 // Load environment variables
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 dotenv.config({ path: path.resolve(__dirname, '../.env') })
 
-// Configure reliable DNS servers for MongoDB SRV resolution on Windows
+// Configure reliable DNS servers for MongoDB SRV resolution
 try {
   dns.setServers(['8.8.8.8', '1.1.1.1'])
 } catch {
   // Ignore if permissions disallow setting custom DNS
 }
 
+// Fallback URI if environment variable is missing (e.g. Vercel deployment before dashboard setup)
+const DEFAULT_MONGODB_URI =
+  'mongodb+srv://kottapalliharisatyanarayana_db_user:T4h3OeE5WqHM4Mmw@cluster0.18sjvym.mongodb.net/crackvault?retryWrites=true&w=majority'
+
 // Automatically sanitize MongoDB URI (removes < > brackets and encodes special chars in password)
 function formatMongoUri(rawUri) {
-  if (!rawUri) return rawUri
+  if (!rawUri) return DEFAULT_MONGODB_URI
   let uri = rawUri.trim()
-  // Remove angle brackets around placeholders like <username> or <password>
   uri = uri.replace(/<([^>]+)>/g, '$1')
 
-  // Check for credentials part before @cluster
   const atIndex = uri.lastIndexOf('@')
   if (atIndex !== -1) {
     const prefixAndAuth = uri.substring(0, atIndex)
@@ -50,7 +57,6 @@ function formatMongoUri(rawUri) {
     }
   }
 
-  // If no database name was specified before query params, append /crackvault
   if (uri.includes('.mongodb.net/?')) {
     uri = uri.replace('.mongodb.net/?', '.mongodb.net/crackvault?')
   } else if (uri.endsWith('.mongodb.net') || uri.endsWith('.mongodb.net/')) {
@@ -62,42 +68,63 @@ function formatMongoUri(rawUri) {
 
 const app = express()
 const PORT = process.env.PORT || 5000
-const rawMongoUri = process.env.MONGODB_URI
+const rawMongoUri = process.env.MONGODB_URI || DEFAULT_MONGODB_URI
 const MONGODB_URI = formatMongoUri(rawMongoUri)
 
 // Middleware
 app.use(
   cors({
-    origin: true, // Allow all origins (Vite dev, LAN phones/laptops, Vercel deployments)
+    origin: true,
     credentials: true
   })
 )
 app.use(express.json({ limit: '10mb' }))
 
-// MongoDB Atlas Connection
+// MongoDB Atlas Connection Manager
 let dbStatus = 'disconnected'
+let connectionPromise = null
 
-// Disable Mongoose command buffering so queries fail fast and trigger instant memory fallback
-mongoose.set('bufferCommands', false)
+export async function connectToDatabase() {
+  if (mongoose.connection.readyState === 1) {
+    dbStatus = 'connected'
+    return mongoose.connection
+  }
 
-if (!MONGODB_URI) {
-  console.warn('\n⚠️ [CrackVault Backend] MONGODB_URI is not set in .env!')
-  console.warn('👉 Please set MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/crackvault in your .env file.\n')
-} else {
-  mongoose
-    .connect(MONGODB_URI, {
-      serverSelectionTimeoutMS: 3000
-    })
-    .then(() => {
-      dbStatus = 'connected'
-      console.log('⚡ [CrackVault Backend] Connected to MongoDB Atlas successfully!')
-    })
-    .catch((err) => {
-      dbStatus = 'error'
-      console.error('❌ [CrackVault Backend] MongoDB Atlas connection error:', err.message)
-    })
+  if (!connectionPromise) {
+    connectionPromise = mongoose
+      .connect(MONGODB_URI, {
+        serverSelectionTimeoutMS: 5000,
+        connectTimeoutMS: 5000
+      })
+      .then((m) => {
+        dbStatus = 'connected'
+        console.log('⚡ [CrackVault Backend] Connected to MongoDB Atlas successfully!')
+        return m
+      })
+      .catch((err) => {
+        dbStatus = 'error'
+        connectionPromise = null
+        console.error('❌ [CrackVault Backend] MongoDB connection error:', err.message)
+        throw err
+      })
+  }
+
+  return connectionPromise
 }
 
+// Ensure database connection middleware for all /api calls
+app.use(async (req, res, next) => {
+  if (req.path.startsWith('/api') && req.path !== '/api/health') {
+    try {
+      await connectToDatabase()
+    } catch {
+      // In-memory fallback routes will respond if MongoDB is unavailable
+    }
+  }
+  next()
+})
+
+// Mongoose connection event listeners
 mongoose.connection.on('connected', () => {
   dbStatus = 'connected'
   console.log('📦 [Mongoose] Connected to database cluster.')
@@ -113,6 +140,9 @@ mongoose.connection.on('disconnected', () => {
   console.warn('⚠️ [Mongoose] Disconnected from database cluster.')
 })
 
+// Kick off initial connection
+connectToDatabase().catch(() => {})
+
 // Health Route
 app.get('/api/health', (req, res) => {
   res.json({
@@ -120,11 +150,28 @@ app.get('/api/health', (req, res) => {
     service: 'crackvault-backend',
     timestamp: new Date().toISOString(),
     database: {
-      status: dbStatus,
+      status: mongoose.connection.readyState === 1 ? 'connected' : dbStatus,
       name: mongoose.connection.name || 'crackvault',
       host: mongoose.connection.host || 'unknown'
     }
   })
+})
+
+// Reset All Route
+app.post('/api/reset-all', async (req, res) => {
+  try {
+    await Promise.all([
+      Session.deleteMany({}),
+      Player.deleteMany({}),
+      Challenge.deleteMany({}),
+      Score.deleteMany({})
+    ])
+    console.log('🧹 [CrackVault Backend] Database reset to clean state.')
+    return res.json({ success: true, message: 'All database data successfully reset' })
+  } catch (err) {
+    console.error('❌ [Reset API] Error resetting database:', err.message)
+    return res.status(500).json({ error: err.message })
+  }
 })
 
 // API Routes
@@ -132,8 +179,9 @@ app.use('/api/sessions', sessionsRouter)
 app.use('/api/players', playersRouter)
 app.use('/api/challenges', challengesRouter)
 app.use('/api/scores', scoresRouter)
+app.use('/api/settings', settingsRouter)
 
-// Start Server (only when running as standalone Node process, not in Vercel serverless environment)
+// Start Server (standalone Node process)
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`🚀 [CrackVault Server] Running on http://localhost:${PORT}`)

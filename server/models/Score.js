@@ -3,12 +3,14 @@ import mongoose from 'mongoose'
 const scoreSchema = new mongoose.Schema(
   {
     id: { type: String, required: true, unique: true },
-    sessionId: { type: String, required: true, index: true },
+    sessionId: { type: String, default: 'global', index: true },
     playerName: { type: String, required: true },
     avatar: { type: String, default: '⚡' },
     challengeTitle: { type: String, default: 'Vault Mission' },
+    timeTaken: { type: Number, default: 0 },
     solveTime: { type: Number, default: 0 },
     attempts: { type: Number, default: 1 },
+    hintsRevealed: { type: Number, default: 0 },
     hintsUsed: { type: Number, default: 0 },
     score: { type: Number, default: 0, index: -1 },
     createdAt: { type: String }
