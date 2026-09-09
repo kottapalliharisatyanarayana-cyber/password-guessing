@@ -100,6 +100,29 @@ function ensureCleanState() {
 }
 ensureCleanState()
 
+// Deduplicate and merge player records so each contestant name appears only once per room
+export function deduplicatePlayers(players: GamePlayer[]): GamePlayer[] {
+  const map = new Map<string, GamePlayer>()
+  players.forEach((p) => {
+    if (!p || !p.name) return
+    const key = `${p.sessionId}_${p.name.toLowerCase().trim()}`
+    const existing = map.get(key)
+    if (!existing) {
+      map.set(key, p)
+    } else {
+      if (
+        p.attempts > existing.attempts ||
+        (p.score || 0) > (existing.score || 0) ||
+        p.status === 'playing' ||
+        p.status === 'solved'
+      ) {
+        map.set(key, p)
+      }
+    }
+  })
+  return Array.from(map.values())
+}
+
 // Flag to prevent cloud-to-local updates from bouncing back to cloud
 let isIncomingCloudUpdate = false
 
@@ -164,11 +187,12 @@ export const storage = {
   },
 
   savePlayers(players: GamePlayer[]) {
-    localStorage.setItem(KEYS.PLAYERS, JSON.stringify(players))
+    const clean = deduplicatePlayers(players)
+    localStorage.setItem(KEYS.PLAYERS, JSON.stringify(clean))
     broadcastStateChange('PLAYERS_UPDATED')
     if (!isIncomingCloudUpdate) {
-      cloudSavePlayers(players)
-      supabaseBroadcastPlayers(players)
+      cloudSavePlayers(clean)
+      supabaseBroadcastPlayers(clean)
     }
   },
 
@@ -279,7 +303,9 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
     const unsubPlayers = subscribeCloudPlayers((remotePlayers) => {
       isIncomingCloudUpdate = true
       try {
-        localStorage.setItem(KEYS.PLAYERS, JSON.stringify(remotePlayers))
+        const local = storage.getPlayers()
+        const merged = deduplicatePlayers([...local, ...remotePlayers])
+        localStorage.setItem(KEYS.PLAYERS, JSON.stringify(merged))
         broadcastStateChange('PLAYERS_UPDATED')
         onSyncEvent?.('PLAYERS_UPDATED')
       } finally {
@@ -330,10 +356,12 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
       }
     })
 
-    const unsubSubPlayers = subscribeSupabaseEvent('PLAYERS_SYNC', (remotePlayers) => {
+    const unsubSubPlayers = subscribeSupabaseEvent('PLAYERS_SYNC', (remotePlayers: GamePlayer[]) => {
       isIncomingCloudUpdate = true
       try {
-        localStorage.setItem(KEYS.PLAYERS, JSON.stringify(remotePlayers))
+        const local = storage.getPlayers()
+        const merged = deduplicatePlayers([...local, ...remotePlayers])
+        localStorage.setItem(KEYS.PLAYERS, JSON.stringify(merged))
         broadcastStateChange('PLAYERS_UPDATED')
         onSyncEvent?.('PLAYERS_UPDATED')
       } finally {

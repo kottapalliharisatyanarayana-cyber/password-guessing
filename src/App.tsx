@@ -76,26 +76,20 @@ export function App() {
     reloadData()
 
     // Cross-tab reactive listener
-    const unsubscribeLocal = subscribeStateChange((action) => {
+    const unsubscribeLocal = subscribeStateChange(() => {
       reloadData()
-      if (action === 'SESSIONS_UPDATED') {
-        showToast('Live session state updated across network')
-      }
     })
 
     // Realtime Cloud listener across separate devices
-    const unsubscribeCloud = initCloudSync((action) => {
+    const unsubscribeCloud = initCloudSync(() => {
       reloadData()
-      if (action === 'SESSIONS_UPDATED') {
-        showToast('⚡ Realtime Cloud: Live session updated')
-      }
     })
 
     return () => {
       unsubscribeLocal()
       unsubscribeCloud()
     }
-  }, [reloadData, showToast])
+  }, [reloadData])
 
   // Sound toggle
   const handleToggleSound = () => {
@@ -115,25 +109,49 @@ export function App() {
     )
     if (!targetSession) return
 
-    // Create new player record
-    const newPlayer: GamePlayer = {
-      id: 'p_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
-      sessionId: targetSession.id,
-      name: playerName,
-      avatar,
-      status: targetSession.status === 'playing' ? 'playing' : 'waiting',
-      attempts: 0,
-      hintsUsed: 0,
-      revealedHints: [],
-      joinedAt: new Date().toISOString()
+    const cleanName = playerName.trim()
+
+    // Check if player with the same name is already in this session
+    const existingIndex = players.findIndex(
+      (p) => p.sessionId === targetSession.id && p.name.toLowerCase().trim() === cleanName.toLowerCase()
+    )
+
+    let finalPlayerId: string
+    let updatedPlayers: GamePlayer[]
+
+    if (existingIndex >= 0) {
+      // Reconnect existing player without creating duplicate entries
+      const existing = players[existingIndex]
+      finalPlayerId = existing.id
+      const updated: GamePlayer = {
+        ...existing,
+        avatar,
+        status: targetSession.status === 'playing' ? 'playing' : existing.status
+      }
+      updatedPlayers = [...players]
+      updatedPlayers[existingIndex] = updated
+    } else {
+      // Register new player
+      const newPlayer: GamePlayer = {
+        id: 'p_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        sessionId: targetSession.id,
+        name: cleanName,
+        avatar,
+        status: targetSession.status === 'playing' ? 'playing' : 'waiting',
+        attempts: 0,
+        hintsUsed: 0,
+        revealedHints: [],
+        joinedAt: new Date().toISOString()
+      }
+      finalPlayerId = newPlayer.id
+      updatedPlayers = [...players, newPlayer]
     }
 
-    const updatedPlayers = [...players, newPlayer]
     setPlayers(updatedPlayers)
     storage.savePlayers(updatedPlayers)
 
     setActiveSessionId(targetSession.id)
-    setCurrentPlayerId(newPlayer.id)
+    setCurrentPlayerId(finalPlayerId)
     showToast(`Joined session: ${targetSession.joinCode}`)
   }
 

@@ -33,11 +33,9 @@ export const PlayerLobby: React.FC<PlayerLobbyProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [isSearching, setIsSearching] = useState(false)
 
-  // Request cloud sync when opening lobby
+  // Request cloud sync once when opening lobby
   useEffect(() => {
     supabaseRequestSync()
-    const timer = setInterval(() => supabaseRequestSync(), 3000)
-    return () => clearInterval(timer)
   }, [])
 
   useEffect(() => {
