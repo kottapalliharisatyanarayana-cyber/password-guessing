@@ -41,9 +41,9 @@ router.post('/', async (req, res) => {
     const score = await Score.findOneAndUpdate(
       { id: normalized.id },
       { $set: normalized },
-      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+      { new: true, upsert: true, setDefaultsOnInsert: true }
     )
-    return res.json(score)
+    return res.json(score || normalized)
   } catch (err) {
     console.warn('⚠️ [Scores API] MongoDB save error, served from memory:', err.message)
     return res.json(normalized)

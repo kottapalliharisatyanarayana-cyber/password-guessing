@@ -28,7 +28,7 @@ interface AdminDashboardProps {
   onResetSession: (id: string) => void
   onDeleteSession: (id: string) => void
   onCreateSession: (challengeId: string, customTime?: number) => void
-  onSaveChallenge: (challenge: Challenge) => void
+  onSaveChallenge: (challenge: Challenge) => Promise<void> | void
   onDeleteChallenge: (id: string) => void
   onClearLeaderboard: () => void
   onUpdateSettings: (settings: AppSettings) => void

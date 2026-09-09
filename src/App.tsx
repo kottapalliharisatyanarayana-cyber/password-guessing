@@ -488,12 +488,17 @@ export function App() {
     showToast('Session deleted')
   }
 
-  const handleSaveChallenge = (ch: Challenge) => {
+  const handleSaveChallenge = async (ch: Challenge) => {
     const exists = challenges.some((c) => c.id === ch.id)
     const updated = exists ? challenges.map((c) => (c.id === ch.id ? ch : c)) : [ch, ...challenges]
     setChallenges(updated)
     storage.saveChallenges(updated)
-    apiSaveChallenge(ch).catch(() => {})
+    const res = await apiSaveChallenge(ch)
+    if (res) {
+      showToast('Challenge saved to MongoDB Atlas!')
+    } else {
+      showToast('Challenge saved locally')
+    }
   }
 
   const handleDeleteChallenge = (id: string) => {

@@ -29,9 +29,9 @@ router.post('/', async (req, res) => {
     const challenge = await Challenge.findOneAndUpdate(
       { id: data.id },
       { $set: data },
-      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+      { new: true, upsert: true, setDefaultsOnInsert: true }
     )
-    return res.json(challenge)
+    return res.json(challenge || data)
   } catch (err) {
     console.warn('⚠️ [Challenges API] MongoDB save error, served from memory:', err.message)
     return res.json(data)

@@ -88,9 +88,9 @@ router.post('/', async (req, res) => {
     const session = await Session.findOneAndUpdate(
       { id: data.id },
       { $set: data },
-      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+      { new: true, upsert: true, setDefaultsOnInsert: true }
     )
-    return res.status(200).json(session)
+    return res.status(200).json(session || data)
   } catch (err) {
     console.warn('⚠️ [Sessions API] MongoDB save error (will serve from memory):', err.message)
     return res.status(200).json(data)

@@ -20,7 +20,7 @@ interface AdminPageProps {
   onResetSession: (sessionId: string) => void
   onDeleteSession: (sessionId: string) => void
   onCreateSession: (challengeId: string, customTime?: number) => void
-  onSaveChallenge: (ch: Challenge) => void
+  onSaveChallenge: (ch: Challenge) => Promise<void> | void
   onDeleteChallenge: (id: string) => void
   onClearLeaderboard: () => void
   onUpdateSettings: (s: AppSettings) => void

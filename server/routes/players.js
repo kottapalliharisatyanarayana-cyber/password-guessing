@@ -39,9 +39,9 @@ router.post('/', async (req, res) => {
     const player = await Player.findOneAndUpdate(
       { id: data.id },
       { $set: data },
-      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+      { new: true, upsert: true, setDefaultsOnInsert: true }
     )
-    return res.json(player)
+    return res.json(player || data)
   } catch (err) {
     console.warn('⚠️ [Players API] MongoDB save error, served from memory:', err.message)
     return res.json(data)

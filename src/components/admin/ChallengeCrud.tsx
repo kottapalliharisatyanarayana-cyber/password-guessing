@@ -22,7 +22,7 @@ import {
 
 interface ChallengeCrudProps {
   challenges: Challenge[]
-  onSaveChallenge: (challenge: Challenge) => void
+  onSaveChallenge: (challenge: Challenge) => Promise<void> | void
   onDeleteChallenge: (id: string) => void
   onNotify: (msg: string) => void
 }
@@ -190,19 +190,20 @@ export const ChallengeCrud: React.FC<ChallengeCrudProps> = ({
     reader.readAsDataURL(file)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.title.trim() || !formData.password.trim()) {
       alert('Please enter a challenge title and target password.')
       return
     }
 
+    const hintItemsList = formData.hintItems || []
     const hints: [string, string, string, string, string] = [
-      formData.hintItems[0]?.content || '',
-      formData.hintItems[1]?.content || '',
-      formData.hintItems[2]?.content || '',
-      formData.hintItems[3]?.content || '',
-      formData.hintItems[4]?.content || ''
+      hintItemsList[0]?.content || formData.hints?.[0] || '',
+      hintItemsList[1]?.content || formData.hints?.[1] || '',
+      hintItemsList[2]?.content || formData.hints?.[2] || '',
+      hintItemsList[3]?.content || formData.hints?.[3] || '',
+      hintItemsList[4]?.content || formData.hints?.[4] || ''
     ]
 
     const saved: Challenge = {
@@ -212,10 +213,15 @@ export const ChallengeCrud: React.FC<ChallengeCrudProps> = ({
       hints
     }
 
-    onSaveChallenge(saved)
-    setShowModal(false)
-    sound.playClick()
-    onNotify(editingChallenge ? 'Challenge updated successfully' : 'New challenge created!')
+    try {
+      await onSaveChallenge(saved)
+      setShowModal(false)
+      sound.playClick()
+      onNotify(editingChallenge ? 'Challenge updated successfully' : 'New challenge created!')
+    } catch (err: any) {
+      console.error('Error saving challenge:', err)
+      alert('Failed to save challenge: ' + (err?.message || 'Unknown error'))
+    }
   }
 
   const handleDelete = (id: string, title: string) => {

@@ -14,16 +14,13 @@ const challengeSchema = new mongoose.Schema(
     isImageClue: { type: Boolean, default: false },
     visualClueUnlockSeconds: { type: Number },
     timeLimit: { type: Number, default: 300 },
-    difficulty: {
-      type: String,
-      enum: ['Easy', 'Medium', 'Hard', 'Insane'],
-      default: 'Medium'
-    },
+    difficulty: { type: String, default: 'Medium' },
     isActive: { type: Boolean, default: true },
     createdAt: { type: String }
   },
   {
     timestamps: true,
+    strict: false,
     toJSON: {
       transform: (_, ret) => {
         delete ret._id

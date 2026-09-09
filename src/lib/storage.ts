@@ -16,6 +16,7 @@ import {
   apiSyncSessions,
   apiSyncPlayers,
   apiSyncChallenges,
+  apiSaveChallenge,
   apiSyncScores,
   apiGetSessions,
   apiGetPlayers,
@@ -217,7 +218,23 @@ export const storage = {
   },
 
   saveChallenges(challenges: Challenge[]) {
-    localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(challenges))
+    try {
+      localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(challenges))
+    } catch (e) {
+      console.warn('⚠️ [Storage] LocalStorage quota exceeded, storing lightweight challenges locally:', e)
+      try {
+        const lightweight = challenges.map((c) => ({
+          ...c,
+          imageUrl: c.imageUrl && c.imageUrl.length > 500 ? '' : c.imageUrl,
+          hints: c.hints.map((h) => (h && h.length > 500 ? '[Image Attached]' : h)) as [string, string, string, string, string],
+          hintItems: (c.hintItems || []).map((item) => ({
+            ...item,
+            content: item.content && item.content.length > 500 ? '[Image Attached]' : item.content
+          }))
+        }))
+        localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(lightweight))
+      } catch {}
+    }
     broadcastStateChange('CHALLENGES_UPDATED')
     if (!isIncomingCloudUpdate) {
       cloudSaveChallenges(challenges)
@@ -471,8 +488,20 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
         if (remoteChallenges.length === 0 && local.length > 0) {
           apiSyncChallenges(local).catch(() => {})
         } else {
-          if (JSON.stringify(remoteChallenges) !== JSON.stringify(local)) {
-            localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(remoteChallenges))
+          // Merge local and remote by id so in-flight local additions are preserved
+          const map = new Map<string, Challenge>()
+          remoteChallenges.forEach((c) => map.set(c.id, c))
+          local.forEach((c) => {
+            if (!map.has(c.id)) {
+              map.set(c.id, c)
+              apiSaveChallenge(c).catch(() => {})
+            }
+          })
+          const merged = Array.from(map.values())
+          if (JSON.stringify(merged) !== JSON.stringify(local)) {
+            try {
+              localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(merged))
+            } catch {}
             broadcastStateChange('CHALLENGES_UPDATED')
             onSyncEvent?.('CHALLENGES_UPDATED')
           }
