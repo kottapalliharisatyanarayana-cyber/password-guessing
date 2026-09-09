@@ -17,13 +17,10 @@ import {
 } from './lib/storage'
 import { apiSavePlayer } from './lib/api'
 import { sound } from './lib/sound'
-import { Navbar } from './components/Navbar'
-import { PlayerLobby } from './components/player/PlayerLobby'
-import { PlayerArena } from './components/player/PlayerArena'
-import { AdminAuth } from './components/admin/AdminAuth'
-import { AdminDashboard } from './components/admin/AdminDashboard'
+import { PlayerPage } from './pages/PlayerPage'
+import { AdminPage } from './pages/AdminPage'
 import { CyberBackground } from './components/CyberBackground'
-import { CheckCircle2, ShieldAlert } from 'lucide-react'
+import { CheckCircle2 } from 'lucide-react'
 
 export function App() {
   // Global Data States
@@ -34,30 +31,65 @@ export function App() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [cloudConnected, setCloudConnected] = useState(isCloudActive())
 
-  // Navigation & UI States
-  const [currentMode, setCurrentMode] = useState<'player' | 'admin'>('player')
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false)
-  const [isAdminRoute, setIsAdminRoute] = useState(false)
+  // Dedicated Route Detection: /admin vs / (Player)
+  const getIsAdminPath = () => {
+    if (typeof window === 'undefined') return false
+    const path = window.location.pathname.toLowerCase()
+    const hash = window.location.hash.toLowerCase()
+    const params = new URLSearchParams(window.location.search)
+    return (
+      path.startsWith('/admin') ||
+      hash === '#admin' ||
+      hash.startsWith('#/admin') ||
+      params.get('mode') === 'admin' ||
+      params.get('admin') === 'true'
+    )
+  }
+
+  const [isAdminRoute, setIsAdminRoute] = useState<boolean>(getIsAdminPath)
   const [toast, setToast] = useState<string | null>(null)
   const [initialJoinCode, setInitialJoinCode] = useState<string>('')
 
-  // Check URL query parameters for ?join= or ?room= or ?admin=true or /admin path
+  // Route & Query Params Initializer
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search)
       const code = params.get('join') || params.get('room')
       if (code) {
         setInitialJoinCode(code.toUpperCase())
-        setCurrentMode('player')
+        setIsAdminRoute(false)
+      } else {
+        setIsAdminRoute(getIsAdminPath())
       }
-      const adminFlag = params.get('admin') === 'true'
-      const isAdminPath = window.location.pathname.startsWith('/admin')
-      if (adminFlag || isAdminPath) {
-        setIsAdminRoute(true)
-        setCurrentMode('admin')
+
+      const handleLocationChange = () => {
+        setIsAdminRoute(getIsAdminPath())
+      }
+      window.addEventListener('popstate', handleLocationChange)
+      window.addEventListener('hashchange', handleLocationChange)
+      return () => {
+        window.removeEventListener('popstate', handleLocationChange)
+        window.removeEventListener('hashchange', handleLocationChange)
       }
     }
   }, [])
+
+  // Navigation Handlers
+  const navigateToAdmin = () => {
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/admin')
+    }
+    setIsAdminRoute(true)
+    sound.playClick()
+  }
+
+  const navigateToPlayer = () => {
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/')
+    }
+    setIsAdminRoute(false)
+    sound.playClick()
+  }
 
   // Player Active Session State (persisted to sessionStorage for resilient page reloads)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
@@ -100,7 +132,7 @@ export function App() {
       reloadData()
     })
 
-    // Realtime Cloud listener across separate devices
+    // Realtime Cloud listener across separate devices via Express & MongoDB Atlas
     const unsubscribeCloud = initCloudSync(() => {
       reloadData()
     })
@@ -143,7 +175,6 @@ export function App() {
     let playerRecord: GamePlayer
 
     if (existing) {
-      // Reconnect existing player without creating duplicate entries
       finalPlayerId = existing.id
       playerRecord = {
         ...existing,
@@ -154,7 +185,6 @@ export function App() {
         status: targetSession.status === 'playing' ? 'playing' : existing.status
       }
     } else {
-      // Register new player
       playerRecord = {
         id: 'p_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
         sessionId: targetSession.id,
@@ -170,7 +200,6 @@ export function App() {
       finalPlayerId = playerRecord.id
     }
 
-    // Filter out ANY previous entries with this name in this room, then append the single canonical record
     const filteredPlayers = players.filter(
       (p) =>
         !(
@@ -295,7 +324,6 @@ export function App() {
     const ch = challenges.find((c) => c.id === challengeId)
     if (!ch) return
 
-    // Generate random 6-character uppercase PIN
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
     let code = ''
     for (let i = 0; i < 6; i++) {
@@ -329,14 +357,13 @@ export function App() {
     setSessions(updated)
     storage.saveSessions(updated)
 
-    // Move waiting players to playing
     const updatedPlayers = players.map((p) =>
       p.sessionId === sessionId ? { ...p, status: 'playing' as const } : p
     )
     setPlayers(updatedPlayers)
     storage.savePlayers(updatedPlayers)
 
-    showToast('Session Started! Players moved into the arena.')
+    showToast('Session Started! Contestants moved into the arena.')
   }
 
   const handlePauseSession = (sessionId: string) => {
@@ -376,7 +403,6 @@ export function App() {
     setSessions(updated)
     storage.saveSessions(updated)
 
-    // Reset player status back to waiting so contestants return to waiting lobby
     const updatedPlayers = players.map((p) =>
       p.sessionId === sessionId || (p.joinCode && sTarget.joinCode && p.joinCode.toUpperCase() === sTarget.joinCode.toUpperCase())
         ? { ...p, status: 'waiting' as const, attempts: 0, hintsUsed: 0, revealedHints: [], score: undefined }
@@ -468,7 +494,6 @@ export function App() {
     showToast('All system data reset to defaults')
   }
 
-  // Simulate Bot Competitor
   const handleSimulateBot = (sessionId: string) => {
     const botNames = ['CyberGhost', 'Phreak-00', 'Glitch_Byte', 'Vektor_7', 'Echo-Prime']
     const avatars = ['🤖', '👾', '🦊', '⚡', '🛸']
@@ -491,10 +516,9 @@ export function App() {
     setPlayers(updated)
     storage.savePlayers(updated)
     sound.playClick()
-    showToast(`Bot contestant "${randName}" simulated in room!`)
+    showToast(`Bot competitor "${randName}" simulated in room!`)
   }
 
-  // Contestant Roster Admin Handlers
   const handleRemovePlayer = (playerId: string) => {
     const updated = players.filter((p) => p.id !== playerId)
     setPlayers(updated)
@@ -517,14 +541,12 @@ export function App() {
   // Active Session & Resilient Details
   const currentSession = sessions.find((s) => s.id === activeSessionId)
 
-  // Resilient Challenge Resolver: NEVER allows a missing challenge to lock a player out of the game
   const currentChallenge: Challenge | undefined = (() => {
     if (!currentSession) return undefined
     if (currentSession.challenge) return currentSession.challenge
     const ch = challenges.find((c) => c.id === currentSession.challengeId)
     if (ch) return ch
 
-    // Auto-synthesize resilient fallback challenge so contestants are NEVER blocked
     const fallback: Challenge = {
       id: currentSession.challengeId || 'ch_' + currentSession.id,
       title: 'Decryption Protocol',
@@ -545,7 +567,6 @@ export function App() {
     return fallback
   })()
 
-  // Resilient Player Resolver: checks players list or immediately joined player state
   const currentPlayer =
     players.find((p) => p.id === currentPlayerId) ||
     joinedPlayer ||
@@ -566,175 +587,59 @@ export function App() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-      {/* Animated Cyber Ambient Background & Particles */}
+      {/* Animated Cyber Background */}
       <CyberBackground />
 
-      {/* Top Navigation */}
-      <Navbar
-        currentMode={currentMode}
-        onSelectMode={(mode) => {
-          setCurrentMode(mode)
-        }}
-        soundEnabled={settings.soundEnabled}
-        onToggleSound={handleToggleSound}
-        activeSessionCount={sessions.filter((s) => s.status === 'playing').length}
-        cloudConnected={cloudConnected}
-        isAdminLoggedIn={isAdminLoggedIn}
-        isAdminRoute={isAdminRoute}
-        isEventMode={Boolean(initialJoinCode)}
-        onLogoutAdmin={() => {
-          setIsAdminLoggedIn(false)
-          setCurrentMode('player')
-          setIsAdminRoute(false)
-          showToast('Logged out of Admin Portal')
-        }}
-      />
-
-      {/* Main Content Area */}
-      <main className="main-wrapper">
-        {currentMode === 'player' ? (
-          activeSessionId && currentSession && currentPlayer ? (
-            currentSession.status === 'lobby' ? (
-              <PlayerLobby
-                sessions={sessions}
-                challenges={challenges}
-                players={currentSessionPlayers}
-                onJoinSession={handleJoinSession}
-                currentWaitingSession={currentSession}
-                currentWaitingPlayer={currentPlayer}
-                onLeaveWaiting={handleLeaveGame}
-                onGoToAdmin={() => {
-                  setCurrentMode('admin')
-                  sound.playClick()
-                }}
-              />
-            ) : (
-              <PlayerArena
-                session={currentSession}
-                challenge={currentChallenge!}
-                player={currentPlayer}
-                players={currentSessionPlayers}
-                onGuessAttempt={handlePlayerGuessAttempt}
-                onRevealHint={handlePlayerRevealHint}
-                onLeaveGame={handleLeaveGame}
-                onGoToLeaderboard={() => {
-                  handleLeaveGame()
-                  if (isAdminLoggedIn) {
-                    setCurrentMode('admin')
-                  }
-                }}
-              />
-            )
-          ) : (
-            <PlayerLobby
-              sessions={sessions}
-              challenges={challenges}
-              players={players}
-              onJoinSession={handleJoinSession}
-              initialCode={initialJoinCode}
-              onGoToAdmin={() => {
-                setCurrentMode('admin')
-                sound.playClick()
-              }}
-            />
-          )
-        ) : !isAdminLoggedIn ? (
-          <AdminAuth
-            onSuccess={() => {
-              setIsAdminLoggedIn(true)
-              showToast('Admin login verified')
-            }}
-            onCancel={() => {
-              setCurrentMode('player')
-              setIsAdminRoute(false)
-            }}
-            adminUsername={settings.adminUsername || 'admin'}
-            adminPasswordHash={settings.adminPassword || 'admin123'}
-          />
-        ) : (
-          <AdminDashboard
-            challenges={challenges}
-            sessions={sessions}
-            players={players}
-            scores={scores}
-            settings={settings}
-            onStartSession={handleStartSession}
-            onPauseSession={handlePauseSession}
-            onResumeSession={handleResumeSession}
-            onResetSession={handleResetSession}
-            onDeleteSession={handleDeleteSession}
-            onCreateSession={handleCreateSession}
-            onSaveChallenge={handleSaveChallenge}
-            onDeleteChallenge={handleDeleteChallenge}
-            onClearLeaderboard={handleClearLeaderboard}
-            onUpdateSettings={handleUpdateSettings}
-            onResetAll={handleResetAll}
-            onSimulateBot={handleSimulateBot}
-            onLogout={() => {
-              setIsAdminLoggedIn(false)
-              setCurrentMode('player')
-              setIsAdminRoute(false)
-              showToast('Logged out of Admin Command')
-            }}
-            onNotify={showToast}
-            onForceRevealNextHint={handleForceRevealNextHint}
-            onRemovePlayer={handleRemovePlayer}
-            onClearSessionPlayers={handleClearSessionPlayers}
-          />
-        )}
-      </main>
-
-      {/* Discreet Footer with Admin Access Link */}
-      <footer
-        style={{
-          marginTop: 'auto',
-          padding: '1rem 2rem',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          fontSize: '0.75rem',
-          color: 'var(--text-muted)',
-          borderTop: '1px solid rgba(255, 255, 255, 0.05)',
-          background: 'rgba(6, 9, 16, 0.65)',
-          backdropFilter: 'blur(8px)',
-          position: 'relative',
-          zIndex: 10,
-          flexWrap: 'wrap',
-          gap: '0.75rem'
-        }}
-      >
-        <div>
-          <span>CRACKVAULT © {new Date().getFullYear()} • Secure Multiplayer Decryption Platform</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {!isAdminLoggedIn && currentMode !== 'admin' && (
-            <button
-              onClick={() => {
-                setCurrentMode('admin')
-                sound.playClick()
-              }}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-muted)',
-                cursor: 'pointer',
-                fontSize: '0.74rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                opacity: 0.5,
-                transition: 'opacity 0.2s',
-                padding: '0.2rem 0.4rem'
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-              onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.5')}
-              title="Event Host & Server Command Login"
-            >
-              <ShieldAlert size={12} /> Admin Portal
-            </button>
-          )}
-        </div>
-      </footer>
+      {/* DEDICATED SEPARATE PAGES */}
+      {isAdminRoute ? (
+        <AdminPage
+          challenges={challenges}
+          sessions={sessions}
+          players={players}
+          scores={scores}
+          settings={settings}
+          cloudConnected={cloudConnected}
+          soundEnabled={settings.soundEnabled}
+          onToggleSound={handleToggleSound}
+          onStartSession={handleStartSession}
+          onPauseSession={handlePauseSession}
+          onResumeSession={handleResumeSession}
+          onResetSession={handleResetSession}
+          onDeleteSession={handleDeleteSession}
+          onCreateSession={handleCreateSession}
+          onSaveChallenge={handleSaveChallenge}
+          onDeleteChallenge={handleDeleteChallenge}
+          onClearLeaderboard={handleClearLeaderboard}
+          onUpdateSettings={handleUpdateSettings}
+          onResetAll={handleResetAll}
+          onSimulateBot={handleSimulateBot}
+          onForceRevealNextHint={handleForceRevealNextHint}
+          onRemovePlayer={handleRemovePlayer}
+          onClearSessionPlayers={handleClearSessionPlayers}
+          onNavigateToPlayer={navigateToPlayer}
+          onNotify={showToast}
+        />
+      ) : (
+        <PlayerPage
+          sessions={sessions}
+          challenges={challenges}
+          players={players}
+          activeSessionId={activeSessionId}
+          currentSession={currentSession}
+          currentChallenge={currentChallenge}
+          currentPlayer={currentPlayer}
+          currentSessionPlayers={currentSessionPlayers}
+          initialJoinCode={initialJoinCode}
+          cloudConnected={cloudConnected}
+          soundEnabled={settings.soundEnabled}
+          onToggleSound={handleToggleSound}
+          onJoinSession={handleJoinSession}
+          onPlayerGuessAttempt={handlePlayerGuessAttempt}
+          onPlayerRevealHint={handlePlayerRevealHint}
+          onLeaveGame={handleLeaveGame}
+          onNavigateToAdmin={navigateToAdmin}
+        />
+      )}
 
       {/* Toast Notification */}
       {toast && (
@@ -746,4 +651,6 @@ export function App() {
     </div>
   )
 }
+
 export default App
+

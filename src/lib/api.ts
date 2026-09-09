@@ -1,10 +1,30 @@
 import { GameSession, Challenge, GamePlayer, ScoreEntry } from '../types'
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL ||
-  (typeof window !== 'undefined' && window.location.hostname === 'localhost'
-    ? 'http://localhost:5000/api'
-    : '/api')
+export function getApiBaseUrl(): string {
+  if (typeof window === 'undefined') return '/api'
+  const host = window.location.hostname
+
+  // 1. Explicit override if set via environment variable
+  const envUrl = import.meta.env.VITE_API_URL
+  if (envUrl && !envUrl.includes('localhost')) {
+    return envUrl
+  }
+
+  // 2. Localhost development
+  if (host === 'localhost' || host === '127.0.0.1') {
+    return 'http://localhost:5000/api'
+  }
+
+  // 3. Local Area Network (Wi-Fi IP e.g. 10.118.105.29)
+  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) {
+    return `http://${host}:5000/api`
+  }
+
+  // 4. Production Cloud (Vercel / custom domain): use relative /api
+  return '/api'
+}
+
+export const API_BASE_URL = getApiBaseUrl()
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T | null> {
   try {

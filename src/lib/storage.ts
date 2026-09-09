@@ -436,42 +436,66 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
 
       if (remoteSessions && Array.isArray(remoteSessions)) {
         const local = storage.getSessions()
-        const map = new Map<string, GameSession>()
-        local.forEach((s) => map.set(s.id, s))
-        remoteSessions.forEach((s) => map.set(s.id, s))
-        const merged = Array.from(map.values())
-        if (JSON.stringify(merged) !== JSON.stringify(local)) {
-          localStorage.setItem(KEYS.SESSIONS, JSON.stringify(merged))
-          broadcastStateChange('SESSIONS_UPDATED')
-          onSyncEvent?.('SESSIONS_UPDATED')
+        if (remoteSessions.length === 0 && local.length > 0) {
+          apiSyncSessions(local).catch(() => {})
+        } else {
+          const map = new Map<string, GameSession>()
+          local.forEach((s) => map.set(s.id, s))
+          remoteSessions.forEach((s) => map.set(s.id, s))
+          const merged = Array.from(map.values())
+          if (JSON.stringify(merged) !== JSON.stringify(local)) {
+            localStorage.setItem(KEYS.SESSIONS, JSON.stringify(merged))
+            broadcastStateChange('SESSIONS_UPDATED')
+            onSyncEvent?.('SESSIONS_UPDATED')
+          }
         }
       }
 
       if (remotePlayers && Array.isArray(remotePlayers)) {
         const local = storage.getPlayers()
-        const merged = deduplicatePlayers([...local, ...remotePlayers])
-        if (merged.length !== local.length || JSON.stringify(merged) !== JSON.stringify(local)) {
-          localStorage.setItem(KEYS.PLAYERS, JSON.stringify(merged))
-          broadcastStateChange('PLAYERS_UPDATED')
-          onSyncEvent?.('PLAYERS_UPDATED')
+        if (remotePlayers.length === 0 && local.length > 0) {
+          apiSyncPlayers(local).catch(() => {})
+        } else {
+          const merged = deduplicatePlayers([...local, ...remotePlayers])
+          if (merged.length !== local.length || JSON.stringify(merged) !== JSON.stringify(local)) {
+            localStorage.setItem(KEYS.PLAYERS, JSON.stringify(merged))
+            broadcastStateChange('PLAYERS_UPDATED')
+            onSyncEvent?.('PLAYERS_UPDATED')
+          }
         }
       }
 
-      if (remoteChallenges && Array.isArray(remoteChallenges) && remoteChallenges.length > 0) {
+      if (remoteChallenges && Array.isArray(remoteChallenges)) {
         const local = storage.getChallenges()
-        if (local.length === 0) {
-          localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(remoteChallenges))
-          broadcastStateChange('CHALLENGES_UPDATED')
-          onSyncEvent?.('CHALLENGES_UPDATED')
+        if (remoteChallenges.length === 0 && local.length > 0) {
+          apiSyncChallenges(local).catch(() => {})
+        } else if (remoteChallenges.length > 0) {
+          const map = new Map<string, Challenge>()
+          local.forEach((c) => map.set(c.id, c))
+          remoteChallenges.forEach((c) => map.set(c.id, c))
+          const merged = Array.from(map.values())
+          if (JSON.stringify(merged) !== JSON.stringify(local)) {
+            localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(merged))
+            broadcastStateChange('CHALLENGES_UPDATED')
+            onSyncEvent?.('CHALLENGES_UPDATED')
+          }
         }
       }
 
-      if (remoteScores && Array.isArray(remoteScores) && remoteScores.length > 0) {
+      if (remoteScores && Array.isArray(remoteScores)) {
         const local = storage.getScores()
-        if (remoteScores.length > local.length) {
-          localStorage.setItem(KEYS.SCORES, JSON.stringify(remoteScores))
-          broadcastStateChange('SCORES_UPDATED')
-          onSyncEvent?.('SCORES_UPDATED')
+        if (remoteScores.length === 0 && local.length > 0) {
+          apiSyncScores(local).catch(() => {})
+        } else if (remoteScores.length > 0) {
+          const map = new Map<string, ScoreEntry>()
+          local.forEach((sc) => map.set(sc.id, sc))
+          remoteScores.forEach((sc) => map.set(sc.id, sc))
+          const merged = Array.from(map.values()).sort((a, b) => b.score - a.score)
+          if (JSON.stringify(merged) !== JSON.stringify(local)) {
+            localStorage.setItem(KEYS.SCORES, JSON.stringify(merged))
+            broadcastStateChange('SCORES_UPDATED')
+            onSyncEvent?.('SCORES_UPDATED')
+          }
         }
       }
     } catch {
