@@ -11,9 +11,9 @@ import {
   subscribeStateChange,
   calculateScore,
   initCloudSync,
+  isCloudActive,
   DEFAULT_SETTINGS
 } from './lib/storage'
-import { isFirebaseConnected } from './lib/firebase'
 import { sound } from './lib/sound'
 import { Navbar } from './components/Navbar'
 import { PlayerLobby } from './components/player/PlayerLobby'
@@ -30,7 +30,7 @@ export function App() {
   const [players, setPlayers] = useState<GamePlayer[]>([])
   const [scores, setScores] = useState<ScoreEntry[]>([])
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
-  const [cloudConnected, setCloudConnected] = useState(isFirebaseConnected())
+  const [cloudConnected, setCloudConnected] = useState(isCloudActive())
 
   // Navigation & UI States
   const [currentMode, setCurrentMode] = useState<'player' | 'admin'>('player')
@@ -69,7 +69,7 @@ export function App() {
     const s = storage.getSettings()
     setSettings(s)
     sound.setEnabled(s.soundEnabled)
-    setCloudConnected(isFirebaseConnected())
+    setCloudConnected(isCloudActive())
   }, [])
 
   useEffect(() => {

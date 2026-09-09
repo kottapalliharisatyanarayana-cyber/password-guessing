@@ -12,6 +12,15 @@ import {
   isFirebaseConnected,
   initFirebase
 } from './firebase'
+import {
+  isSupabaseConnected,
+  initSupabaseRealtime,
+  subscribeSupabaseEvent,
+  supabaseBroadcastSessions,
+  supabaseBroadcastPlayers,
+  supabaseBroadcastChallenges,
+  supabaseBroadcastScores
+} from './supabase'
 
 const KEYS = {
   CHALLENGES: 'crackvault_challenges',
@@ -115,6 +124,7 @@ export const storage = {
     broadcastStateChange('CHALLENGES_UPDATED')
     if (!isIncomingCloudUpdate) {
       cloudSaveChallenges(challenges)
+      supabaseBroadcastChallenges(challenges)
     }
   },
 
@@ -136,6 +146,7 @@ export const storage = {
     broadcastStateChange('SESSIONS_UPDATED')
     if (!isIncomingCloudUpdate) {
       cloudSaveSessions(sessions)
+      supabaseBroadcastSessions(sessions)
     }
   },
 
@@ -157,6 +168,7 @@ export const storage = {
     broadcastStateChange('PLAYERS_UPDATED')
     if (!isIncomingCloudUpdate) {
       cloudSavePlayers(players)
+      supabaseBroadcastPlayers(players)
     }
   },
 
@@ -178,6 +190,7 @@ export const storage = {
     broadcastStateChange('SCORES_UPDATED')
     if (!isIncomingCloudUpdate) {
       cloudSaveScores(scores)
+      supabaseBroadcastScores(scores)
     }
   },
 
@@ -228,8 +241,16 @@ export const storage = {
       cloudSavePlayers([])
       cloudSaveScores([])
       cloudSaveSettings(DEFAULT_SETTINGS)
+      supabaseBroadcastChallenges([])
+      supabaseBroadcastSessions([])
+      supabaseBroadcastPlayers([])
+      supabaseBroadcastScores([])
     }
   }
+}
+
+export function isCloudActive(): boolean {
+  return isFirebaseConnected() || isSupabaseConnected()
 }
 
 // --- CLOUD SYNC INITIALIZATION & LISTENER SUBSCRIPTION ---
@@ -241,37 +262,86 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
   unsubscribers.forEach((unsub) => unsub && unsub())
   unsubscribers = []
 
+  // --- 1. FIREBASE REALTIME LISTENER ---
   const db = initFirebase()
-  if (!db) return () => {}
+  if (db) {
+    const unsubSessions = subscribeCloudSessions((remoteSessions) => {
+      isIncomingCloudUpdate = true
+      try {
+        localStorage.setItem(KEYS.SESSIONS, JSON.stringify(remoteSessions))
+        broadcastStateChange('SESSIONS_UPDATED')
+        onSyncEvent?.('SESSIONS_UPDATED')
+      } finally {
+        isIncomingCloudUpdate = false
+      }
+    })
 
-  // 1. Sessions Listener
-  const unsubSessions = subscribeCloudSessions((remoteSessions) => {
-    isIncomingCloudUpdate = true
-    try {
-      localStorage.setItem(KEYS.SESSIONS, JSON.stringify(remoteSessions))
-      broadcastStateChange('SESSIONS_UPDATED')
-      onSyncEvent?.('SESSIONS_UPDATED')
-    } finally {
-      isIncomingCloudUpdate = false
-    }
-  })
+    const unsubPlayers = subscribeCloudPlayers((remotePlayers) => {
+      isIncomingCloudUpdate = true
+      try {
+        localStorage.setItem(KEYS.PLAYERS, JSON.stringify(remotePlayers))
+        broadcastStateChange('PLAYERS_UPDATED')
+        onSyncEvent?.('PLAYERS_UPDATED')
+      } finally {
+        isIncomingCloudUpdate = false
+      }
+    })
 
-  // 2. Players Listener
-  const unsubPlayers = subscribeCloudPlayers((remotePlayers) => {
-    isIncomingCloudUpdate = true
-    try {
-      localStorage.setItem(KEYS.PLAYERS, JSON.stringify(remotePlayers))
-      broadcastStateChange('PLAYERS_UPDATED')
-      onSyncEvent?.('PLAYERS_UPDATED')
-    } finally {
-      isIncomingCloudUpdate = false
-    }
-  })
+    const unsubChallenges = subscribeCloudChallenges((remoteChallenges) => {
+      if (remoteChallenges.length > 0 || storage.getChallenges().length === 0) {
+        isIncomingCloudUpdate = true
+        try {
+          localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(remoteChallenges))
+          broadcastStateChange('CHALLENGES_UPDATED')
+          onSyncEvent?.('CHALLENGES_UPDATED')
+        } finally {
+          isIncomingCloudUpdate = false
+        }
+      }
+    })
 
-  // 3. Challenges Listener
-  const unsubChallenges = subscribeCloudChallenges((remoteChallenges) => {
-    // Only update if remote has challenges or local is empty
-    if (remoteChallenges.length > 0 || storage.getChallenges().length === 0) {
+    const unsubScores = subscribeCloudScores((remoteScores) => {
+      isIncomingCloudUpdate = true
+      try {
+        localStorage.setItem(KEYS.SCORES, JSON.stringify(remoteScores))
+        broadcastStateChange('SCORES_UPDATED')
+        onSyncEvent?.('SCORES_UPDATED')
+      } finally {
+        isIncomingCloudUpdate = false
+      }
+    })
+
+    unsubscribers.push(unsubSessions, unsubPlayers, unsubChallenges, unsubScores)
+  }
+
+  // --- 2. SUPABASE REALTIME BROADCAST LISTENER ---
+  if (isSupabaseConnected()) {
+    const unsubSupabase = initSupabaseRealtime(onSyncEvent)
+    unsubscribers.push(unsubSupabase)
+
+    const unsubSubSessions = subscribeSupabaseEvent('SESSIONS_SYNC', (remoteSessions) => {
+      isIncomingCloudUpdate = true
+      try {
+        localStorage.setItem(KEYS.SESSIONS, JSON.stringify(remoteSessions))
+        broadcastStateChange('SESSIONS_UPDATED')
+        onSyncEvent?.('SESSIONS_UPDATED')
+      } finally {
+        isIncomingCloudUpdate = false
+      }
+    })
+
+    const unsubSubPlayers = subscribeSupabaseEvent('PLAYERS_SYNC', (remotePlayers) => {
+      isIncomingCloudUpdate = true
+      try {
+        localStorage.setItem(KEYS.PLAYERS, JSON.stringify(remotePlayers))
+        broadcastStateChange('PLAYERS_UPDATED')
+        onSyncEvent?.('PLAYERS_UPDATED')
+      } finally {
+        isIncomingCloudUpdate = false
+      }
+    })
+
+    const unsubSubChallenges = subscribeSupabaseEvent('CHALLENGES_SYNC', (remoteChallenges) => {
       isIncomingCloudUpdate = true
       try {
         localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(remoteChallenges))
@@ -280,22 +350,21 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
       } finally {
         isIncomingCloudUpdate = false
       }
-    }
-  })
+    })
 
-  // 4. Scores Listener
-  const unsubScores = subscribeCloudScores((remoteScores) => {
-    isIncomingCloudUpdate = true
-    try {
-      localStorage.setItem(KEYS.SCORES, JSON.stringify(remoteScores))
-      broadcastStateChange('SCORES_UPDATED')
-      onSyncEvent?.('SCORES_UPDATED')
-    } finally {
-      isIncomingCloudUpdate = false
-    }
-  })
+    const unsubSubScores = subscribeSupabaseEvent('SCORES_SYNC', (remoteScores) => {
+      isIncomingCloudUpdate = true
+      try {
+        localStorage.setItem(KEYS.SCORES, JSON.stringify(remoteScores))
+        broadcastStateChange('SCORES_UPDATED')
+        onSyncEvent?.('SCORES_UPDATED')
+      } finally {
+        isIncomingCloudUpdate = false
+      }
+    })
 
-  unsubscribers = [unsubSessions, unsubPlayers, unsubChallenges, unsubScores]
+    unsubscribers.push(unsubSubSessions, unsubSubPlayers, unsubSubChallenges, unsubSubScores)
+  }
 
   return () => {
     unsubscribers.forEach((unsub) => unsub && unsub())

@@ -9,6 +9,14 @@ import {
   FirebaseConfig
 } from '../../lib/firebase'
 import {
+  getSupabaseUrl,
+  getSupabaseAnonKey,
+  saveSupabaseCredentials,
+  clearSupabaseCredentials,
+  isSupabaseConnected,
+  DEFAULT_SUPABASE_URL
+} from '../../lib/supabase'
+import {
   Settings,
   Lock,
   Volume2,
@@ -18,7 +26,8 @@ import {
   CheckCircle2,
   ExternalLink,
   Zap,
-  Info
+  Info,
+  Radio
 } from 'lucide-react'
 
 interface SettingsViewProps {
@@ -44,6 +53,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [defaultTime, setDefaultTime] = useState(settings.defaultTimeLimit)
   const [soundEnabled, setSoundEnabled] = useState(settings.soundEnabled)
 
+  // Supabase Realtime State
+  const [supabaseUrl, setSupabaseUrl] = useState(getSupabaseUrl() || DEFAULT_SUPABASE_URL)
+  const [supabaseAnonKey, setSupabaseAnonKey] = useState(getSupabaseAnonKey())
+  const [supabaseConnected, setSupabaseConnected] = useState(isSupabaseConnected())
+  const [supabaseMessage, setSupabaseMessage] = useState<string | null>(null)
+
   // Firebase Realtime State
   const [firebaseConnected, setFirebaseConnected] = useState(isFirebaseConnected())
   const [databaseUrl, setDatabaseUrl] = useState('')
@@ -60,7 +75,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setProjectId(existing.projectId || '')
     }
     setFirebaseConnected(isFirebaseConnected())
+    setSupabaseConnected(isSupabaseConnected())
   }, [])
+
+  const handleSaveSupabase = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!supabaseUrl.trim() || !supabaseAnonKey.trim()) {
+      setSupabaseMessage('Please enter your Supabase URL and anon public key.')
+      return
+    }
+
+    saveSupabaseCredentials(supabaseUrl, supabaseAnonKey)
+    const connected = isSupabaseConnected()
+    setSupabaseConnected(connected)
+    sound.playClick()
+    if (connected) {
+      setSupabaseMessage('⚡ Supabase Realtime Connected! All devices and phones will now sync live rooms across the internet.')
+      onNotify('Supabase Realtime Connected')
+    } else {
+      setSupabaseMessage('Could not connect. Please verify your Supabase anon key.')
+    }
+  }
+
+  const handleClearSupabase = () => {
+    clearSupabaseCredentials()
+    setSupabaseAnonKey('')
+    setSupabaseConnected(false)
+    setSupabaseMessage('Supabase credentials removed.')
+    sound.playClick()
+    onNotify('Supabase disconnected')
+  }
 
   const handleUpdateCredentials = (e: React.FormEvent) => {
     e.preventDefault()
@@ -112,11 +156,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleParseSnippet = () => {
     if (!rawSnippet.trim()) return
     try {
-      // Extract apiKey
       const keyMatch = rawSnippet.match(/apiKey:\s*["']([^"']+)["']/)
-      // Extract databaseURL
       const dbMatch = rawSnippet.match(/databaseURL:\s*["']([^"']+)["']/)
-      // Extract projectId
       const projMatch = rawSnippet.match(/projectId:\s*["']([^"']+)["']/)
 
       if (keyMatch && keyMatch[1]) setApiKey(keyMatch[1])
@@ -162,7 +203,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setProjectId('')
     setRawSnippet('')
     setFirebaseConnected(false)
-    setCloudMessage('Firebase configuration removed. System reverted to local-only mode.')
+    setCloudMessage('Firebase configuration removed.')
     sound.playClick()
     onNotify('Cloud sync disconnected')
   }
@@ -175,48 +216,168 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   }
 
+  const anyCloudLive = supabaseConnected || firebaseConnected
+
   return (
     <div style={{ maxWidth: '820px' }}>
       <div style={{ marginBottom: '2rem' }}>
         <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#fff' }}>Platform Settings</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-          Configure administrator access, cross-device multiplayer cloud sync, session durations, and audio feedback.
+          Configure administrator access, cross-device multiplayer cloud sync (Supabase or Firebase), session durations, and audio feedback.
         </p>
       </div>
 
       <div style={{ display: 'grid', gap: '1.5rem' }}>
-        {/* Cross-Device Multiplayer (Firebase Cloud Sync) */}
-        <div className="glass-panel" style={{ padding: '1.75rem', borderColor: firebaseConnected ? 'rgba(0,245,160,0.3)' : 'rgba(0,210,255,0.2)' }}>
+        {/* PRIMARY: Supabase Realtime Multiplayer */}
+        <div className="glass-panel" style={{ padding: '1.75rem', borderColor: supabaseConnected ? 'rgba(0,245,160,0.4)' : 'rgba(62,207,142,0.3)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
-              <Cloud size={20} style={{ color: firebaseConnected ? 'var(--neon-mint)' : 'var(--neon-cyan)' }} />
-              Cross-Device Cloud Multiplayer (Firebase)
+              <Radio size={20} style={{ color: '#3ECF8E' }} />
+              <span>Cross-Device Multiplayer (Supabase Realtime)</span>
             </h3>
             <span
-              className={`badge ${firebaseConnected ? 'badge-mint' : ''}`}
+              className={`badge ${supabaseConnected ? 'badge-mint' : ''}`}
               style={{
                 fontSize: '0.72rem',
-                background: firebaseConnected ? undefined : 'rgba(255,255,255,0.06)',
-                color: firebaseConnected ? undefined : 'var(--text-muted)'
+                background: supabaseConnected ? undefined : 'rgba(255,255,255,0.06)',
+                color: supabaseConnected ? undefined : 'var(--text-muted)'
               }}
             >
-              {firebaseConnected ? '🟢 CLOUD SYNC LIVE' : '⚪ LOCAL SINGLE-DEVICE MODE'}
+              {supabaseConnected ? '🟢 SUPABASE REALTIME LIVE' : '⚪ NOT CONNECTED'}
             </span>
           </div>
 
           <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1.25rem', lineHeight: '1.45' }}>
-            Connecting a free Firebase Realtime Database enables players on <strong>separate laptops, tablets, and smartphones</strong> to join your room PIN (e.g., <code>SYNAPSE9</code>) across the internet.
+            Your project is configured for <strong>Supabase</strong>! Paste your project's <code>anon</code> public API key below to activate live multiplayer rooms across any phone, laptop, or computer.
+          </p>
+
+          {supabaseMessage && (
+            <div
+              style={{
+                padding: '0.65rem 1rem',
+                background: supabaseConnected ? 'rgba(0,245,160,0.12)' : 'rgba(62,207,142,0.12)',
+                border: `1px solid ${supabaseConnected ? 'var(--neon-mint)' : '#3ECF8E'}`,
+                color: '#fff',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.82rem',
+                marginBottom: '1rem'
+              }}
+            >
+              {supabaseMessage}
+            </div>
+          )}
+
+          <form onSubmit={handleSaveSupabase}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.5fr', gap: '1rem', marginBottom: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
+                  Supabase Project URL
+                </label>
+                <input
+                  type="text"
+                  className="input-field"
+                  value={supabaseUrl}
+                  onChange={(e) => setSupabaseUrl(e.target.value)}
+                  placeholder="https://dxygamtlhojyblzwbsyf.supabase.co"
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
+                  Supabase Anon (Public) Key *
+                </label>
+                <input
+                  type="password"
+                  className="input-field"
+                  value={supabaseAnonKey}
+                  onChange={(e) => setSupabaseAnonKey(e.target.value)}
+                  placeholder="eyJhbGciOiJIUzI1NiIsIn..."
+                  required
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <button
+                type="submit"
+                className="btn-primary"
+                style={{
+                  padding: '0.6rem 1.25rem',
+                  fontSize: '0.82rem',
+                  background: 'linear-gradient(135deg, #3ECF8E, #00F5A0)',
+                  color: '#000',
+                  fontWeight: 700
+                }}
+              >
+                <Zap size={14} />
+                <span>Save &amp; Connect Supabase Realtime</span>
+              </button>
+
+              {supabaseConnected && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={handleClearSupabase}
+                  style={{ padding: '0.6rem 1rem', fontSize: '0.82rem' }}
+                >
+                  Disconnect
+                </button>
+              )}
+
+              <a
+                href="https://supabase.com/dashboard/project/dxygamtlhojyblzwbsyf/settings/api"
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  marginLeft: 'auto',
+                  fontSize: '0.76rem',
+                  color: '#3ECF8E',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                  textDecoration: 'none'
+                }}
+              >
+                <span>Get Anon Key in Supabase Dashboard</span>
+                <ExternalLink size={12} />
+              </a>
+            </div>
+          </form>
+        </div>
+
+        {/* SECONDARY: Firebase Cloud Sync */}
+        <div className="glass-panel" style={{ padding: '1.5rem', opacity: supabaseConnected ? 0.75 : 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+              <Cloud size={18} style={{ color: firebaseConnected ? 'var(--neon-mint)' : 'var(--neon-cyan)' }} />
+              Alternative: Firebase Realtime Database
+            </h3>
+            <span
+              className={`badge ${firebaseConnected ? 'badge-mint' : ''}`}
+              style={{
+                fontSize: '0.68rem',
+                background: firebaseConnected ? undefined : 'rgba(255,255,255,0.06)',
+                color: firebaseConnected ? undefined : 'var(--text-muted)'
+              }}
+            >
+              {firebaseConnected ? '🟢 FIREBASE ACTIVE' : '⚪ INACTIVE'}
+            </span>
+          </div>
+
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+            Optional fallback: If you prefer Google Firebase over Supabase, you can paste your Firebase credentials here.
           </p>
 
           {cloudMessage && (
             <div
               style={{
-                padding: '0.65rem 1rem',
-                background: firebaseConnected ? 'rgba(0,245,160,0.12)' : 'rgba(0,210,255,0.12)',
-                border: `1px solid ${firebaseConnected ? 'var(--neon-mint)' : 'var(--neon-cyan)'}`,
+                padding: '0.6rem 0.85rem',
+                background: 'rgba(0,210,255,0.12)',
+                border: '1px solid var(--neon-cyan)',
                 color: '#fff',
                 borderRadius: 'var(--radius-md)',
-                fontSize: '0.82rem',
+                fontSize: '0.78rem',
                 marginBottom: '1rem'
               }}
             >
@@ -224,109 +385,68 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           )}
 
-          <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.25)', borderRadius: 'var(--radius-md)', marginBottom: '1.25rem' }}>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Info size={14} style={{ color: 'var(--neon-cyan)' }} />
-              <span>Quick Paste (Paste entire <code>const firebaseConfig = ...</code> snippet from Firebase Console):</span>
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <input
-                type="text"
-                className="input-field"
-                value={rawSnippet}
-                onChange={(e) => setRawSnippet(e.target.value)}
-                placeholder='paste firebaseConfig = { apiKey: "...", databaseURL: "..." }'
-                style={{ fontSize: '0.78rem', fontFamily: 'monospace' }}
-              />
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={handleParseSnippet}
-                style={{ whiteSpace: 'nowrap', fontSize: '0.78rem' }}
-              >
-                Auto-Fill
-              </button>
-            </div>
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+            <input
+              type="text"
+              className="input-field"
+              value={rawSnippet}
+              onChange={(e) => setRawSnippet(e.target.value)}
+              placeholder='paste firebaseConfig = { apiKey: "...", databaseURL: "..." }'
+              style={{ fontSize: '0.75rem', fontFamily: 'monospace' }}
+            />
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={handleParseSnippet}
+              style={{ whiteSpace: 'nowrap', fontSize: '0.75rem' }}
+            >
+              Auto-Fill
+            </button>
           </div>
 
           <form onSubmit={handleSaveFirebase}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
-                  Realtime Database URL *
-                </label>
                 <input
                   type="text"
                   className="input-field"
                   value={databaseUrl}
                   onChange={(e) => setDatabaseUrl(e.target.value)}
-                  placeholder="https://your-project-rtdb.firebaseio.com"
-                  required
+                  placeholder="Database URL"
+                  style={{ fontSize: '0.75rem' }}
                 />
               </div>
-
               <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
-                  API Key *
-                </label>
                 <input
                   type="text"
                   className="input-field"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="AIzaSy..."
-                  required
+                  placeholder="API Key"
+                  style={{ fontSize: '0.75rem' }}
                 />
               </div>
-
               <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
-                  Project ID
-                </label>
                 <input
                   type="text"
                   className="input-field"
                   value={projectId}
                   onChange={(e) => setProjectId(e.target.value)}
-                  placeholder="password-guessing"
+                  placeholder="Project ID"
+                  style={{ fontSize: '0.75rem' }}
                 />
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-              <button type="submit" className="btn-primary" style={{ padding: '0.6rem 1.25rem', fontSize: '0.82rem' }}>
-                <Zap size={14} />
-                <span>Save &amp; Connect Cloud</span>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button type="submit" className="btn-secondary" style={{ fontSize: '0.75rem', padding: '0.5rem 1rem' }}>
+                Save Firebase
               </button>
-
               {firebaseConnected && (
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={handleClearFirebase}
-                  style={{ padding: '0.6rem 1rem', fontSize: '0.82rem' }}
-                >
-                  Disconnect Cloud
+                <button type="button" className="btn-secondary" onClick={handleClearFirebase} style={{ fontSize: '0.75rem', padding: '0.5rem 0.75rem' }}>
+                  Disconnect
                 </button>
               )}
-
-              <a
-                href="https://console.firebase.google.com/"
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  marginLeft: 'auto',
-                  fontSize: '0.76rem',
-                  color: 'var(--neon-cyan)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.3rem',
-                  textDecoration: 'none'
-                }}
-              >
-                <span>Free Firebase Console</span>
-                <ExternalLink size={12} />
-              </a>
             </div>
           </form>
         </div>
