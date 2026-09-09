@@ -73,8 +73,8 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
   const [qrHost, setQrHost] = useState<string>(
     typeof window !== 'undefined'
-      ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '10.10.65.21' : window.location.hostname)
-      : '10.10.65.21'
+      ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '10.118.105.29' : window.location.hostname)
+      : '10.118.105.29'
   )
   const [qrPort, setQrPort] = useState<string>(
     typeof window !== 'undefined' && window.location.port ? window.location.port : '5173'
