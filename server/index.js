@@ -130,10 +130,12 @@ app.use('/api/players', playersRouter)
 app.use('/api/challenges', challengesRouter)
 app.use('/api/scores', scoresRouter)
 
-// Start Server
-app.listen(PORT, () => {
-  console.log(`🚀 [CrackVault Server] Running on http://localhost:${PORT}`)
-  console.log(`   Health check: http://localhost:${PORT}/api/health`)
-})
+// Start Server (only when running as standalone Node process, not in Vercel serverless environment)
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 [CrackVault Server] Running on http://localhost:${PORT}`)
+    console.log(`   Health check: http://localhost:${PORT}/api/health`)
+  })
+}
 
 export default app
