@@ -77,13 +77,16 @@ app.use(express.json({ limit: '10mb' }))
 // MongoDB Atlas Connection
 let dbStatus = 'disconnected'
 
+// Disable Mongoose command buffering so queries fail fast and trigger instant memory fallback
+mongoose.set('bufferCommands', false)
+
 if (!MONGODB_URI) {
   console.warn('\n⚠️ [CrackVault Backend] MONGODB_URI is not set in .env!')
   console.warn('👉 Please set MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/crackvault in your .env file.\n')
 } else {
   mongoose
     .connect(MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000
+      serverSelectionTimeoutMS: 3000
     })
     .then(() => {
       dbStatus = 'connected'

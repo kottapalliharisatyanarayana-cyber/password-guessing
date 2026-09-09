@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { GameSession, Challenge, GamePlayer } from '../../types'
 import { sound } from '../../lib/sound'
 import { supabaseRequestSync } from '../../lib/supabase'
-import { deduplicatePlayersByName } from '../../lib/storage'
+import { deduplicatePlayersByName, storage } from '../../lib/storage'
+import { apiGetSessionByCode } from '../../lib/api'
 import { Shield, KeyRound, User, Users, Play, Radio, Sparkles, Loader2 } from 'lucide-react'
 
 interface PlayerLobbyProps {
@@ -65,21 +66,50 @@ export const PlayerLobby: React.FC<PlayerLobbyProps> = ({
 
     const targetSession = sessions.find((s) => s.joinCode.toUpperCase() === cleanCode)
     if (!targetSession) {
-      // Trigger cloud sync and retry after 400ms
       setIsSearching(true)
       supabaseRequestSync()
-      setTimeout(() => {
-        setIsSearching(false)
-        const recheck = sessions.find((s) => s.joinCode.toUpperCase() === cleanCode)
-        if (recheck) {
-          sound.playClick()
-          setErrorMsg(null)
-          onJoinSession(cleanCode, cleanName, selectedAvatar)
-        } else {
-          setErrorMsg(`No active room found with PIN "${cleanCode}". Make sure the host has created the room.`)
-          sound.playError()
-        }
-      }, 500)
+
+      apiGetSessionByCode(cleanCode)
+        .then((remoteSession) => {
+          if (remoteSession) {
+            const current = storage.getSessions()
+            if (!current.some((s) => s.id === remoteSession.id)) {
+              storage.saveSessions([...current, remoteSession])
+            }
+            sound.playClick()
+            setErrorMsg(null)
+            setIsSearching(false)
+            onJoinSession(cleanCode, cleanName, selectedAvatar)
+            return
+          }
+
+          setTimeout(() => {
+            setIsSearching(false)
+            const recheck = storage.getSessions().find((s) => s.joinCode.toUpperCase() === cleanCode)
+            if (recheck) {
+              sound.playClick()
+              setErrorMsg(null)
+              onJoinSession(cleanCode, cleanName, selectedAvatar)
+            } else {
+              setErrorMsg(`No active room found with PIN "${cleanCode}". Make sure the host has created the room.`)
+              sound.playError()
+            }
+          }, 400)
+        })
+        .catch(() => {
+          setTimeout(() => {
+            setIsSearching(false)
+            const recheck = storage.getSessions().find((s) => s.joinCode.toUpperCase() === cleanCode)
+            if (recheck) {
+              sound.playClick()
+              setErrorMsg(null)
+              onJoinSession(cleanCode, cleanName, selectedAvatar)
+            } else {
+              setErrorMsg(`No active room found with PIN "${cleanCode}". Make sure the host has created the room.`)
+              sound.playError()
+            }
+          }, 400)
+        })
       return
     }
 
