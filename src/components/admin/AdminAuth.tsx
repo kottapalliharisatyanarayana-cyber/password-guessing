@@ -4,12 +4,14 @@ import { Shield, Lock, User, Eye, EyeOff, ArrowRight } from 'lucide-react'
 
 interface AdminAuthProps {
   onSuccess: () => void
+  onCancel?: () => void
   adminUsername?: string
   adminPasswordHash: string
 }
 
 export const AdminAuth: React.FC<AdminAuthProps> = ({
   onSuccess,
+  onCancel,
   adminUsername = 'admin',
   adminPasswordHash = 'admin123'
 }) => {
@@ -166,6 +168,17 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({
           >
             Sign In to Dashboard <ArrowRight size={16} />
           </button>
+
+          {onCancel && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={onCancel}
+              style={{ width: '100%', marginTop: '0.75rem', padding: '0.75rem', fontSize: '0.85rem' }}
+            >
+              ← Return to Player Arena
+            </button>
+          )}
         </form>
       </div>
     </div>

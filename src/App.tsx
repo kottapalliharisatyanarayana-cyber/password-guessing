@@ -578,6 +578,7 @@ export function App() {
         cloudConnected={cloudConnected}
         isAdminLoggedIn={isAdminLoggedIn}
         isAdminRoute={isAdminRoute}
+        isEventMode={Boolean(initialJoinCode)}
         onLogoutAdmin={() => {
           setIsAdminLoggedIn(false)
           setCurrentMode('player')
@@ -599,6 +600,10 @@ export function App() {
                 currentWaitingSession={currentSession}
                 currentWaitingPlayer={currentPlayer}
                 onLeaveWaiting={handleLeaveGame}
+                onGoToAdmin={() => {
+                  setCurrentMode('admin')
+                  sound.playClick()
+                }}
               />
             ) : (
               <PlayerArena
@@ -624,6 +629,10 @@ export function App() {
               players={players}
               onJoinSession={handleJoinSession}
               initialCode={initialJoinCode}
+              onGoToAdmin={() => {
+                setCurrentMode('admin')
+                sound.playClick()
+              }}
             />
           )
         ) : !isAdminLoggedIn ? (
@@ -631,6 +640,10 @@ export function App() {
             onSuccess={() => {
               setIsAdminLoggedIn(true)
               showToast('Admin login verified')
+            }}
+            onCancel={() => {
+              setCurrentMode('player')
+              setIsAdminRoute(false)
             }}
             adminUsername={settings.adminUsername || 'admin'}
             adminPasswordHash={settings.adminPassword || 'admin123'}

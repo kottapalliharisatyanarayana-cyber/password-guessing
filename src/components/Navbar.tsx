@@ -12,6 +12,7 @@ interface NavbarProps {
   isAdminLoggedIn?: boolean
   isAdminRoute?: boolean
   onLogoutAdmin?: () => void
+  isEventMode?: boolean
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -23,7 +24,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   cloudConnected,
   isAdminLoggedIn,
   isAdminRoute,
-  onLogoutAdmin
+  onLogoutAdmin,
+  isEventMode
 }) => {
   return (
     <header className="app-header">
@@ -56,7 +58,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      {/* Mode Switcher Pill - STRICTLY restricted to Admin Portal / Authenticated Admin */}
+      {/* Mode Switcher Pill - STRICTLY for authenticated admin */}
       {(isAdminLoggedIn || isAdminRoute) && (
         <div className="mode-toggle animate-fade-in">
           <button
@@ -85,6 +87,31 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Right Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+        {/* Easy Host / Admin Login button (hidden when contestant joins via specific event link) */}
+        {!isAdminLoggedIn && !isEventMode && currentMode !== 'admin' && (
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              onSelectMode('admin')
+              sound.playClick()
+            }}
+            style={{
+              padding: '0.4rem 0.85rem',
+              fontSize: '0.78rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              borderColor: 'rgba(0, 245, 160, 0.4)',
+              color: '#fff',
+              background: 'rgba(0, 245, 160, 0.08)'
+            }}
+            title="Host & Admin Login"
+          >
+            <Lock size={13} style={{ color: 'var(--neon-mint)' }} />
+            <span>Admin Login</span>
+          </button>
+        )}
+
         {isAdminLoggedIn && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span className="badge badge-amber" style={{ fontSize: '0.65rem', padding: '0.2rem 0.55rem' }}>

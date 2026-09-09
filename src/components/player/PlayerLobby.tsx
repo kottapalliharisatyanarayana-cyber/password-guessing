@@ -14,6 +14,7 @@ interface PlayerLobbyProps {
   currentWaitingPlayer?: GamePlayer | null
   onLeaveWaiting?: () => void
   initialCode?: string
+  onGoToAdmin?: () => void
 }
 
 const AVATARS = ['⚡', '💀', '👾', '🛸', '🐺', '🕶️', '🎯', '🔥', '🤖', '🦊']
@@ -26,7 +27,8 @@ export const PlayerLobby: React.FC<PlayerLobbyProps> = ({
   currentWaitingSession,
   currentWaitingPlayer,
   onLeaveWaiting,
-  initialCode
+  initialCode,
+  onGoToAdmin
 }) => {
   const [code, setCode] = useState(initialCode || '')
   const [name, setName] = useState('')
@@ -423,6 +425,32 @@ export const PlayerLobby: React.FC<PlayerLobbyProps> = ({
           >
             <Play size={18} /> Join Vault Race
           </button>
+
+          {/* Host Admin Link for Organizers */}
+          {!initialCode && onGoToAdmin && (
+            <div style={{ textAlign: 'center', marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <button
+                type="button"
+                onClick={onGoToAdmin}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  opacity: 0.8
+                }}
+              >
+                <span>Hosting this competition?</span>
+                <span style={{ color: 'var(--neon-mint)', fontWeight: 600, textDecoration: 'underline' }}>
+                  Admin Command Login
+                </span>
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>
