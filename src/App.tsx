@@ -12,9 +12,10 @@ import {
   calculateScore,
   initCloudSync,
   isCloudActive,
+  deduplicatePlayersByName,
   DEFAULT_SETTINGS
 } from './lib/storage'
-import { supabaseBroadcastPlayerJoin } from './lib/supabase'
+import { supabaseBroadcastPlayerJoin, supabaseBroadcastPlayers } from './lib/supabase'
 import { sound } from './lib/sound'
 import { Navbar } from './components/Navbar'
 import { PlayerLobby } from './components/player/PlayerLobby'
@@ -113,30 +114,27 @@ export function App() {
 
     const cleanName = playerName.trim()
 
-    // Check if player with the same name is already in this session
-    const existingIndex = players.findIndex(
+    // Find if player with the same name is already in this session
+    const existing = players.find(
       (p) =>
-        (p.sessionId === targetSession.id || (p.joinCode && p.joinCode === targetSession.joinCode)) &&
+        (p.sessionId === targetSession.id || (p.joinCode && p.joinCode.toUpperCase() === cleanCode)) &&
         p.name.toLowerCase().trim() === cleanName.toLowerCase()
     )
 
     let finalPlayerId: string
-    let updatedPlayers: GamePlayer[]
     let playerRecord: GamePlayer
 
-    if (existingIndex >= 0) {
+    if (existing) {
       // Reconnect existing player without creating duplicate entries
-      const existing = players[existingIndex]
       finalPlayerId = existing.id
       playerRecord = {
         ...existing,
+        name: cleanName,
         sessionId: targetSession.id,
         joinCode: targetSession.joinCode,
-        avatar,
+        avatar: avatar || existing.avatar,
         status: targetSession.status === 'playing' ? 'playing' : existing.status
       }
-      updatedPlayers = [...players]
-      updatedPlayers[existingIndex] = playerRecord
     } else {
       // Register new player
       playerRecord = {
@@ -152,12 +150,22 @@ export function App() {
         joinedAt: new Date().toISOString()
       }
       finalPlayerId = playerRecord.id
-      updatedPlayers = [...players, playerRecord]
     }
+
+    // Filter out ANY previous entries with this name in this room, then append the single canonical record
+    const filteredPlayers = players.filter(
+      (p) =>
+        !(
+          (p.sessionId === targetSession.id || (p.joinCode && p.joinCode.toUpperCase() === cleanCode)) &&
+          p.name.toLowerCase().trim() === cleanName.toLowerCase()
+        )
+    )
+    const updatedPlayers = [...filteredPlayers, playerRecord]
 
     setPlayers(updatedPlayers)
     storage.savePlayers(updatedPlayers)
     supabaseBroadcastPlayerJoin(playerRecord)
+    supabaseBroadcastPlayers(updatedPlayers)
 
     setActiveSessionId(targetSession.id)
     setCurrentPlayerId(finalPlayerId)
@@ -179,11 +187,15 @@ export function App() {
       const finalScore = calculateScore(0, newAttempts, activePlayer.revealedHints)
 
       // Update Player
-      const updatedPlayers = players.map((p) =>
-        p.id === currentPlayerId
-          ? { ...p, attempts: newAttempts, status: 'solved' as const, score: finalScore }
-          : { ...p, status: 'failed' as const }
-      )
+      const updatedPlayers = players.map((p) => {
+        if (p.id === currentPlayerId) {
+          return { ...p, attempts: newAttempts, status: 'solved' as const, score: finalScore }
+        }
+        if (p.sessionId === activeSessionId || (currentSession && p.joinCode === currentSession.joinCode)) {
+          return { ...p, status: 'failed' as const }
+        }
+        return p
+      })
       setPlayers(updatedPlayers)
       storage.savePlayers(updatedPlayers)
 
@@ -334,7 +346,11 @@ export function App() {
     storage.saveSessions(updated)
 
     // Reset players for this session
-    const updatedPlayers = players.filter((p) => p.sessionId !== sessionId)
+    const updatedPlayers = players.filter(
+      (p) =>
+        p.sessionId !== sessionId &&
+        (!p.joinCode || p.joinCode.toUpperCase() !== sTarget.joinCode.toUpperCase())
+    )
     setPlayers(updatedPlayers)
     storage.savePlayers(updatedPlayers)
     showToast('Session re-opened in lobby mode')
@@ -375,11 +391,16 @@ export function App() {
   }
 
   const handleDeleteSession = (sessionId: string) => {
+    const sTarget = sessions.find((s) => s.id === sessionId)
     const updated = sessions.filter((s) => s.id !== sessionId)
     setSessions(updated)
     storage.saveSessions(updated)
 
-    const updatedPlayers = players.filter((p) => p.sessionId !== sessionId)
+    const updatedPlayers = players.filter(
+      (p) =>
+        p.sessionId !== sessionId &&
+        (!sTarget || !p.joinCode || p.joinCode.toUpperCase() !== sTarget.joinCode.toUpperCase())
+    )
     setPlayers(updatedPlayers)
     storage.savePlayers(updatedPlayers)
     showToast('Session deleted')
@@ -442,11 +463,36 @@ export function App() {
     showToast(`Bot contestant "${randName}" simulated in room!`)
   }
 
+  // Contestant Roster Admin Handlers
+  const handleRemovePlayer = (playerId: string) => {
+    const updated = players.filter((p) => p.id !== playerId)
+    setPlayers(updated)
+    storage.savePlayers(updated)
+    showToast('Contestant removed from room')
+  }
+
+  const handleClearSessionPlayers = (sessionId: string) => {
+    const sTarget = sessions.find((s) => s.id === sessionId)
+    const updated = players.filter(
+      (p) =>
+        p.sessionId !== sessionId &&
+        (!sTarget || !p.joinCode || p.joinCode.toUpperCase() !== sTarget.joinCode.toUpperCase())
+    )
+    setPlayers(updated)
+    storage.savePlayers(updated)
+    showToast('Room roster cleared')
+  }
+
   // Active Session & Player details
   const currentSession = sessions.find((s) => s.id === activeSessionId)
   const currentChallenge = currentSession?.challenge || challenges.find((c) => c.id === currentSession?.challengeId)
   const currentPlayer = players.find((p) => p.id === currentPlayerId)
-  const currentSessionPlayers = players.filter((p) => p.sessionId === activeSessionId || (currentSession && p.joinCode === currentSession.joinCode))
+  const rawSessionPlayers = players.filter(
+    (p) =>
+      p.sessionId === activeSessionId ||
+      (currentSession && p.joinCode && p.joinCode.toUpperCase() === currentSession.joinCode.toUpperCase())
+  )
+  const currentSessionPlayers = deduplicatePlayersByName(rawSessionPlayers)
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>
@@ -541,6 +587,8 @@ export function App() {
             }}
             onNotify={showToast}
             onForceRevealNextHint={handleForceRevealNextHint}
+            onRemovePlayer={handleRemovePlayer}
+            onClearSessionPlayers={handleClearSessionPlayers}
           />
         )}
       </main>

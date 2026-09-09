@@ -1,6 +1,7 @@
 import React from 'react'
 import { GamePlayer } from '../../types'
 import { Users, Zap, Eye, Trophy, CheckCircle2 } from 'lucide-react'
+import { deduplicatePlayersByName } from '../../lib/storage'
 
 interface LiveRosterProps {
   players: GamePlayer[]
@@ -13,6 +14,8 @@ export const LiveRoster: React.FC<LiveRosterProps> = ({
   currentPlayerId,
   currentScoreProjection
 }) => {
+  const uniquePlayers = deduplicatePlayersByName(players)
+
   return (
     <div className="glass-panel" style={{ padding: '1.25rem', height: '100%' }}>
       {/* Projected Score Header */}
@@ -41,14 +44,14 @@ export const LiveRoster: React.FC<LiveRosterProps> = ({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
         <h4 style={{ fontSize: '0.88rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
           <Users size={16} style={{ color: 'var(--neon-cyan)' }} />
-          Room Competitors ({players.length})
+          Room Competitors ({uniquePlayers.length})
         </h4>
         <span className="pulse-dot" />
       </div>
 
       {/* Competitors List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '360px', overflowY: 'auto' }}>
-        {players.map((p) => {
+        {uniquePlayers.map((p) => {
           const isYou = p.id === currentPlayerId
           return (
             <div

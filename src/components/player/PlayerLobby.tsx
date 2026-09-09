@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { GameSession, Challenge, GamePlayer } from '../../types'
 import { sound } from '../../lib/sound'
 import { supabaseRequestSync } from '../../lib/supabase'
+import { deduplicatePlayersByName } from '../../lib/storage'
 import { Shield, KeyRound, User, Users, Play, Radio, Sparkles, Loader2 } from 'lucide-react'
 
 interface PlayerLobbyProps {
@@ -95,7 +96,12 @@ export const PlayerLobby: React.FC<PlayerLobbyProps> = ({
   // If in waiting state (waiting for admin to start)
   if (currentWaitingSession && currentWaitingPlayer) {
     const challenge = challenges.find((c) => c.id === currentWaitingSession.challengeId)
-    const sessionPlayers = players.filter((p) => p.sessionId === currentWaitingSession.id)
+    const rawSessionPlayers = players.filter(
+      (p) =>
+        p.sessionId === currentWaitingSession.id ||
+        (p.joinCode && currentWaitingSession.joinCode && p.joinCode.toUpperCase() === currentWaitingSession.joinCode.toUpperCase())
+    )
+    const sessionPlayers = deduplicatePlayersByName(rawSessionPlayers)
 
     return (
       <div style={{ maxWidth: '640px', margin: '2rem auto', textAlign: 'center' }}>

@@ -18,8 +18,11 @@ import {
   ExternalLink,
   Bot,
   Download,
-  Check
+  Check,
+  X,
+  UserMinus
 } from 'lucide-react'
+import { deduplicatePlayersByName } from '../../lib/storage'
 
 interface SessionManagerProps {
   sessions: GameSession[]
@@ -35,6 +38,8 @@ interface SessionManagerProps {
   onNotify: (msg: string) => void
   onForceRevealNextHint?: (sessionId: string) => void
   onGoToChallenges?: () => void
+  onRemovePlayer?: (playerId: string) => void
+  onClearSessionPlayers?: (sessionId: string) => void
 }
 
 export const SessionManager: React.FC<SessionManagerProps> = ({
@@ -50,7 +55,9 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
   onSimulateBot,
   onNotify,
   onForceRevealNextHint,
-  onGoToChallenges
+  onGoToChallenges,
+  onRemovePlayer,
+  onClearSessionPlayers
 }) => {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedChallengeId, setSelectedChallengeId] = useState(challenges[0]?.id || '')
@@ -150,7 +157,17 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
         <div style={{ display: 'grid', gap: '1.5rem' }}>
           {sessions.map((sess) => {
             const ch = sess.challenge || challenges.find((c) => c.id === sess.challengeId)
-            const sessionPlayers = players.filter((p) => p.sessionId === sess.id || (p.joinCode && p.joinCode === sess.joinCode))
+            const rawSessionPlayers = players.filter(
+              (p) =>
+                p.sessionId === sess.id ||
+                (p.joinCode && sess.joinCode && p.joinCode.toUpperCase() === sess.joinCode.toUpperCase())
+            )
+            const sessionPlayers = deduplicatePlayersByName(rawSessionPlayers).sort((a, b) => {
+              if (a.status === 'solved' && b.status !== 'solved') return -1
+              if (b.status === 'solved' && a.status !== 'solved') return 1
+              if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0)
+              return a.name.localeCompare(b.name)
+            })
 
             // Hint Countdown computation
             const elapsed = Math.max(0, sess.totalSeconds - sess.remainingSeconds)
@@ -349,13 +366,40 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
 
                 {/* Live Player Scoreboard Table */}
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem' }}>
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                      Live Scoreboard &amp; Status
-                    </span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      Updated in real time
-                    </span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Live Scoreboard ({sessionPlayers.length} Contestant{sessionPlayers.length !== 1 ? 's' : ''})
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      {sessionPlayers.length > 0 && onClearSessionPlayers && (
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          style={{
+                            fontSize: '0.72rem',
+                            padding: '0.2rem 0.55rem',
+                            color: 'var(--neon-crimson)',
+                            borderColor: 'rgba(255, 51, 102, 0.3)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.35rem'
+                          }}
+                          onClick={() => {
+                            if (confirm(`Clear all contestant records for room PIN "${sess.joinCode}"?`)) {
+                              onClearSessionPlayers(sess.id)
+                            }
+                          }}
+                          title="Purge all contestants from this room lobby"
+                        >
+                          <Trash2 size={12} /> Clear Roster
+                        </button>
+                      )}
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        Updated in real time
+                      </span>
+                    </div>
                   </div>
 
                   {sessionPlayers.length === 0 ? (
@@ -372,6 +416,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
                             <th style={{ padding: '0.65rem 1rem' }}>Attempts</th>
                             <th style={{ padding: '0.65rem 1rem' }}>Hints Used</th>
                             <th style={{ padding: '0.65rem 1rem' }}>Score</th>
+                            {onRemovePlayer && <th style={{ padding: '0.65rem 1rem', width: '45px', textAlign: 'center' }}>Action</th>}
                           </tr>
                         </thead>
                         <tbody>
@@ -390,6 +435,19 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
                               <td style={{ padding: '0.65rem 1rem', fontFamily: 'var(--font-mono)', fontWeight: 700, color: p.score ? 'var(--neon-mint)' : 'var(--text-muted)' }}>
                                 {p.score ? `${p.score} pts` : '—'}
                               </td>
+                              {onRemovePlayer && (
+                                <td style={{ padding: '0.65rem 1rem', textAlign: 'center' }}>
+                                  <button
+                                    type="button"
+                                    className="btn-icon"
+                                    style={{ width: '26px', height: '26px', color: 'var(--text-muted)' }}
+                                    onClick={() => onRemovePlayer(p.id)}
+                                    title={`Remove contestant ${p.name}`}
+                                  >
+                                    <X size={13} />
+                                  </button>
+                                </td>
+                              )}
                             </tr>
                           ))}
                         </tbody>

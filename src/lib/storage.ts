@@ -105,19 +105,80 @@ export function deduplicatePlayers(players: GamePlayer[]): GamePlayer[] {
   const map = new Map<string, GamePlayer>()
   players.forEach((p) => {
     if (!p || !p.name) return
-    const key = `${p.sessionId}_${p.name.toLowerCase().trim()}`
+    const roomKey = (p.joinCode || p.sessionId || 'global').trim().toUpperCase()
+    const nameKey = p.name.trim().toLowerCase()
+    const key = `${roomKey}_${nameKey}`
     const existing = map.get(key)
     if (!existing) {
-      map.set(key, p)
+      map.set(key, { ...p, name: p.name.trim() })
     } else {
-      if (
-        p.attempts > existing.attempts ||
+      const isBetter =
+        (p.status === 'solved' && existing.status !== 'solved') ||
         (p.score || 0) > (existing.score || 0) ||
-        p.status === 'playing' ||
-        p.status === 'solved'
-      ) {
-        map.set(key, p)
-      }
+        p.attempts > existing.attempts ||
+        p.hintsUsed > existing.hintsUsed ||
+        (existing.status === 'waiting' && p.status === 'playing')
+
+      const mergedStatus =
+        existing.status === 'solved' || p.status === 'solved'
+          ? 'solved'
+          : existing.status === 'playing' || p.status === 'playing'
+          ? 'playing'
+          : existing.status === 'failed' || p.status === 'failed'
+          ? 'failed'
+          : 'waiting'
+
+      map.set(key, {
+        ...(isBetter ? p : existing),
+        name: p.name.trim(),
+        joinCode: (p.joinCode || existing.joinCode || '').toUpperCase(),
+        sessionId: p.sessionId || existing.sessionId,
+        attempts: Math.max(existing.attempts || 0, p.attempts || 0),
+        hintsUsed: Math.max(existing.hintsUsed || 0, p.hintsUsed || 0),
+        score: Math.max(existing.score || 0, p.score || 0) || undefined,
+        status: mergedStatus,
+        revealedHints: Array.from(new Set([...(existing.revealedHints || []), ...(p.revealedHints || [])]))
+      })
+    }
+  })
+  return Array.from(map.values())
+}
+
+// UI helper to guarantee strict deduplication by contestant name within any single session view
+export function deduplicatePlayersByName(players: GamePlayer[]): GamePlayer[] {
+  const map = new Map<string, GamePlayer>()
+  players.forEach((p) => {
+    if (!p || !p.name) return
+    const key = p.name.trim().toLowerCase()
+    const existing = map.get(key)
+    if (!existing) {
+      map.set(key, { ...p, name: p.name.trim() })
+    } else {
+      const isBetter =
+        (p.status === 'solved' && existing.status !== 'solved') ||
+        (p.score || 0) > (existing.score || 0) ||
+        p.attempts > existing.attempts ||
+        p.hintsUsed > existing.hintsUsed ||
+        (existing.status === 'waiting' && p.status === 'playing')
+
+      const mergedStatus =
+        existing.status === 'solved' || p.status === 'solved'
+          ? 'solved'
+          : existing.status === 'playing' || p.status === 'playing'
+          ? 'playing'
+          : existing.status === 'failed' || p.status === 'failed'
+          ? 'failed'
+          : 'waiting'
+
+      map.set(key, {
+        ...(isBetter ? p : existing),
+        name: p.name.trim(),
+        attempts: Math.max(existing.attempts || 0, p.attempts || 0),
+        hintsUsed: Math.max(existing.hintsUsed || 0, p.hintsUsed || 0),
+        score: Math.max(existing.score || 0, p.score || 0) || undefined,
+        status: mergedStatus,
+        revealedHints: Array.from(new Set([...(existing.revealedHints || []), ...(p.revealedHints || [])]))
+      })
     }
   })
   return Array.from(map.values())
@@ -180,7 +241,13 @@ export const storage = {
       return []
     }
     try {
-      return JSON.parse(raw)
+      const parsed: GamePlayer[] = JSON.parse(raw)
+      const cleaned = deduplicatePlayers(parsed)
+      // Auto-heal: If duplicates existed in localStorage, immediately write back the clean array
+      if (cleaned.length !== parsed.length) {
+        localStorage.setItem(KEYS.PLAYERS, JSON.stringify(cleaned))
+      }
+      return cleaned
     } catch {
       return []
     }

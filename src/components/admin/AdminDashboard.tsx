@@ -37,6 +37,8 @@ interface AdminDashboardProps {
   onLogout: () => void
   onNotify: (msg: string) => void
   onForceRevealNextHint?: (sessionId: string) => void
+  onRemovePlayer?: (playerId: string) => void
+  onClearSessionPlayers?: (sessionId: string) => void
 }
 
 type AdminTab = 'sessions' | 'challenges' | 'leaderboard' | 'settings'
@@ -61,7 +63,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onSimulateBot,
   onLogout,
   onNotify,
-  onForceRevealNextHint
+  onForceRevealNextHint,
+  onRemovePlayer,
+  onClearSessionPlayers
 }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('sessions')
 
@@ -70,9 +74,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     sound.playClick()
   }
 
-  // Aggregate metrics
+  // Aggregate metrics (unique agents by lowercase name)
   const activeSessionsCount = sessions.filter((s) => s.status === 'playing').length
-  const totalPlayersCount = players.length
+  const totalPlayersCount = new Set(players.map((p) => p.name.trim().toLowerCase())).size
   const totalSolvesCount = scores.length
 
   return (
@@ -177,6 +181,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           onNotify={onNotify}
           onForceRevealNextHint={onForceRevealNextHint}
           onGoToChallenges={() => setActiveTab('challenges')}
+          onRemovePlayer={onRemovePlayer}
+          onClearSessionPlayers={onClearSessionPlayers}
         />
       )}
 
