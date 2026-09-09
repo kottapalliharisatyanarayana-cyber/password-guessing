@@ -264,6 +264,30 @@ export const PlayerLobby: React.FC<PlayerLobbyProps> = ({
         )}
 
         <form onSubmit={handleJoin}>
+          {/* Direct Event Link Notification */}
+          {initialCode && (
+            <div
+              style={{
+                marginBottom: '1.25rem',
+                padding: '0.75rem 1rem',
+                borderRadius: 'var(--radius-md)',
+                background: 'rgba(0, 245, 160, 0.08)',
+                border: '1px solid rgba(0, 245, 160, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.6rem',
+                color: 'var(--neon-mint)',
+                fontSize: '0.85rem'
+              }}
+            >
+              <Sparkles size={16} />
+              <span>
+                ASSIGNED MISSION EVENT: <strong>{initialCode}</strong>
+              </span>
+            </div>
+          )}
+
           {/* Room PIN Input */}
           <div style={{ marginBottom: '1.25rem' }}>
             <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.45rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -276,64 +300,69 @@ export const PlayerLobby: React.FC<PlayerLobbyProps> = ({
               onChange={(e) => setCode(e.target.value.toUpperCase())}
               placeholder="e.g. CHIM84"
               maxLength={8}
+              readOnly={Boolean(initialCode)}
               style={{
                 fontSize: '1.35rem',
                 textAlign: 'center',
                 letterSpacing: '0.2em',
                 fontWeight: 800,
-                color: 'var(--neon-mint)'
+                color: 'var(--neon-mint)',
+                background: initialCode ? 'rgba(0, 245, 160, 0.05)' : undefined,
+                cursor: initialCode ? 'default' : 'text'
               }}
             />
           </div>
 
-          {/* Quick Select Available Live Sessions or Clean Standby Status */}
-          {joinableSessions.length > 0 ? (
-            <div style={{ marginBottom: '1.5rem' }}>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.45rem', textTransform: 'uppercase' }}>
-                Active Game Rooms:
-              </span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                {joinableSessions.map((s) => {
-                  const ch = s.challenge || challenges.find((c) => c.id === s.challengeId)
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => handleSelectSession(s)}
-                      style={{
-                        padding: '0.35rem 0.75rem',
-                        fontSize: '0.75rem',
-                        borderColor: code === s.joinCode ? 'var(--neon-mint)' : undefined,
-                        background: code === s.joinCode ? 'rgba(0, 245, 160, 0.12)' : undefined
-                      }}
-                    >
-                      <Radio size={12} style={{ color: 'var(--neon-mint)' }} />
-                      <strong>{s.joinCode}</strong> ({ch?.title || 'Session'})
-                    </button>
-                  )
-                })}
+          {/* Quick Select Available Live Sessions or Clean Standby Status (Only shown when not joined via specific event link) */}
+          {!initialCode && (
+            joinableSessions.length > 0 ? (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.45rem', textTransform: 'uppercase' }}>
+                  Active Game Rooms:
+                </span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  {joinableSessions.map((s) => {
+                    const ch = s.challenge || challenges.find((c) => c.id === s.challengeId)
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => handleSelectSession(s)}
+                        style={{
+                          padding: '0.35rem 0.75rem',
+                          fontSize: '0.75rem',
+                          borderColor: code === s.joinCode ? 'var(--neon-mint)' : undefined,
+                          background: code === s.joinCode ? 'rgba(0, 245, 160, 0.12)' : undefined
+                        }}
+                      >
+                        <Radio size={12} style={{ color: 'var(--neon-mint)' }} />
+                        <strong>{s.joinCode}</strong> ({ch?.title || 'Session'})
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          ) : (
-            <div
-              style={{
-                marginBottom: '1.5rem',
-                padding: '0.75rem 1rem',
-                borderRadius: 'var(--radius-md)',
-                background: 'rgba(0, 245, 160, 0.03)',
-                border: '1px dashed rgba(0, 245, 160, 0.22)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.6rem',
-                fontSize: '0.76rem',
-                color: 'var(--text-secondary)'
-              }}
-            >
-              <span className="pulse-dot" style={{ width: '6px', height: '6px' }} />
-              <span>READY TO PLAY // ENTER HOST PIN OR SCAN QR CODE TO JOIN</span>
-            </div>
+            ) : (
+              <div
+                style={{
+                  marginBottom: '1.5rem',
+                  padding: '0.75rem 1rem',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'rgba(0, 245, 160, 0.03)',
+                  border: '1px dashed rgba(0, 245, 160, 0.22)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.6rem',
+                  fontSize: '0.76rem',
+                  color: 'var(--text-secondary)'
+                }}
+              >
+                <span className="pulse-dot" style={{ width: '6px', height: '6px' }} />
+                <span>READY TO PLAY // ENTER HOST PIN OR SCAN QR CODE TO JOIN</span>
+              </div>
+            )
           )}
 
           {/* Callsign / Name */}

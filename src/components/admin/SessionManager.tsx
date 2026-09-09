@@ -21,7 +21,8 @@ import {
   Check,
   X,
   UserMinus,
-  Square
+  Square,
+  Share2
 } from 'lucide-react'
 import { deduplicatePlayersByName } from '../../lib/storage'
 
@@ -111,6 +112,14 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
     navigator.clipboard.writeText(code)
     sound.playClick()
     onNotify(`Room PIN "${code}" copied to clipboard!`)
+  }
+
+  const copyEventLink = (code: string) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    const link = `${origin}/?join=${code}`
+    navigator.clipboard.writeText(link)
+    sound.playClick()
+    onNotify(`Direct Event link copied to clipboard: ${link}`)
   }
 
   const formatSeconds = (sec: number) => {
@@ -239,8 +248,8 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
                     </div>
                   </div>
 
-                  {/* Room PIN & QR Button */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                  {/* Room PIN, Share Event Link & QR Button */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
                     <div
                       style={{
                         background: 'rgba(0, 245, 160, 0.08)',
@@ -260,6 +269,15 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
                         <Copy size={13} />
                       </button>
                     </div>
+
+                    <button
+                      className="btn-primary"
+                      style={{ padding: '0.45rem 0.85rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.45rem' }}
+                      onClick={() => copyEventLink(sess.joinCode)}
+                      title="Copy direct event link to share with contestants (no admin exposure)"
+                    >
+                      <Share2 size={14} /> Share Event Link
+                    </button>
 
                     <button className="btn-secondary" onClick={() => setQrModalSession(sess)}>
                       <QrCode size={16} /> Display QR
@@ -767,7 +785,11 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
             </div>
 
             {/* Bottom Actions */}
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button className="btn-primary" onClick={() => copyEventLink(qrModalSession.joinCode)}>
+                <Share2 size={15} /> Copy Event Link
+              </button>
+
               <button className="btn-secondary" onClick={() => copyCode(qrModalSession.joinCode)}>
                 <Copy size={15} /> Copy PIN
               </button>

@@ -1,6 +1,6 @@
 import React from 'react'
 import { sound } from '../lib/sound'
-import { Shield, Users, Lock, Volume2, VolumeX, Terminal, KeyRound } from 'lucide-react'
+import { Shield, Users, Lock, Volume2, VolumeX, LogOut } from 'lucide-react'
 
 interface NavbarProps {
   currentMode: 'player' | 'admin'
@@ -9,6 +9,9 @@ interface NavbarProps {
   onToggleSound: () => void
   activeSessionCount: number
   cloudConnected?: boolean
+  isAdminLoggedIn?: boolean
+  isAdminRoute?: boolean
+  onLogoutAdmin?: () => void
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -17,7 +20,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   soundEnabled,
   onToggleSound,
   activeSessionCount,
-  cloudConnected
+  cloudConnected,
+  isAdminLoggedIn,
+  isAdminRoute,
+  onLogoutAdmin
 }) => {
   return (
     <header className="app-header">
@@ -50,33 +56,56 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      {/* Mode Switcher Pill */}
-      <div className="mode-toggle">
-        <button
-          className={currentMode === 'player' ? 'active' : ''}
-          onClick={() => {
-            onSelectMode('player')
-            sound.playClick()
-          }}
-        >
-          <Users size={15} />
-          <span>Player Arena</span>
-        </button>
+      {/* Mode Switcher Pill - STRICTLY restricted to Admin Portal / Authenticated Admin */}
+      {(isAdminLoggedIn || isAdminRoute) && (
+        <div className="mode-toggle animate-fade-in">
+          <button
+            className={currentMode === 'player' ? 'active' : ''}
+            onClick={() => {
+              onSelectMode('player')
+              sound.playClick()
+            }}
+          >
+            <Users size={15} />
+            <span>Player Arena</span>
+          </button>
 
-        <button
-          className={currentMode === 'admin' ? 'active' : ''}
-          onClick={() => {
-            onSelectMode('admin')
-            sound.playClick()
-          }}
-        >
-          <Lock size={15} />
-          <span>Admin Command</span>
-        </button>
-      </div>
+          <button
+            className={currentMode === 'admin' ? 'active' : ''}
+            onClick={() => {
+              onSelectMode('admin')
+              sound.playClick()
+            }}
+          >
+            <Lock size={15} />
+            <span>Admin Command</span>
+          </button>
+        </div>
+      )}
 
       {/* Right Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+        {isAdminLoggedIn && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span className="badge badge-amber" style={{ fontSize: '0.65rem', padding: '0.2rem 0.55rem' }}>
+              ADMIN CONSOLE
+            </span>
+            {onLogoutAdmin && (
+              <button
+                className="btn-icon"
+                onClick={() => {
+                  onLogoutAdmin()
+                  sound.playClick()
+                }}
+                title="Logout from Admin Portal"
+                style={{ color: 'var(--neon-crimson)', width: '32px', height: '32px' }}
+              >
+                <LogOut size={15} />
+              </button>
+            )}
+          </div>
+        )}
+
         <button
           className="btn-icon"
           onClick={() => {

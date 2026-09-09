@@ -37,10 +37,11 @@ export function App() {
   // Navigation & UI States
   const [currentMode, setCurrentMode] = useState<'player' | 'admin'>('player')
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false)
+  const [isAdminRoute, setIsAdminRoute] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [initialJoinCode, setInitialJoinCode] = useState<string>('')
 
-  // Check URL query parameters for ?join= or ?room=
+  // Check URL query parameters for ?join= or ?room= or ?admin=true or /admin path
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search)
@@ -48,6 +49,12 @@ export function App() {
       if (code) {
         setInitialJoinCode(code.toUpperCase())
         setCurrentMode('player')
+      }
+      const adminFlag = params.get('admin') === 'true'
+      const isAdminPath = window.location.pathname.startsWith('/admin')
+      if (adminFlag || isAdminPath) {
+        setIsAdminRoute(true)
+        setCurrentMode('admin')
       }
     }
   }, [])
@@ -564,14 +571,19 @@ export function App() {
         currentMode={currentMode}
         onSelectMode={(mode) => {
           setCurrentMode(mode)
-          if (mode === 'admin' && !isAdminLoggedIn) {
-            // will show login screen
-          }
         }}
         soundEnabled={settings.soundEnabled}
         onToggleSound={handleToggleSound}
         activeSessionCount={sessions.filter((s) => s.status === 'playing').length}
         cloudConnected={cloudConnected}
+        isAdminLoggedIn={isAdminLoggedIn}
+        isAdminRoute={isAdminRoute}
+        onLogoutAdmin={() => {
+          setIsAdminLoggedIn(false)
+          setCurrentMode('player')
+          setIsAdminRoute(false)
+          showToast('Logged out of Admin Portal')
+        }}
       />
 
       {/* Main Content Area */}
@@ -599,8 +611,9 @@ export function App() {
                 onLeaveGame={handleLeaveGame}
                 onGoToLeaderboard={() => {
                   handleLeaveGame()
-                  setCurrentMode('admin')
-                  setIsAdminLoggedIn(true)
+                  if (isAdminLoggedIn) {
+                    setCurrentMode('admin')
+                  }
                 }}
               />
             )
@@ -643,6 +656,8 @@ export function App() {
             onSimulateBot={handleSimulateBot}
             onLogout={() => {
               setIsAdminLoggedIn(false)
+              setCurrentMode('player')
+              setIsAdminRoute(false)
               showToast('Logged out of Admin Command')
             }}
             onNotify={showToast}
@@ -652,6 +667,58 @@ export function App() {
           />
         )}
       </main>
+
+      {/* Discreet Footer with Admin Access Link */}
+      <footer
+        style={{
+          marginTop: 'auto',
+          padding: '1rem 2rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          fontSize: '0.75rem',
+          color: 'var(--text-muted)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+          background: 'rgba(6, 9, 16, 0.65)',
+          backdropFilter: 'blur(8px)',
+          position: 'relative',
+          zIndex: 10,
+          flexWrap: 'wrap',
+          gap: '0.75rem'
+        }}
+      >
+        <div>
+          <span>CRACKVAULT © {new Date().getFullYear()} • Secure Multiplayer Decryption Platform</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          {!isAdminLoggedIn && currentMode !== 'admin' && (
+            <button
+              onClick={() => {
+                setCurrentMode('admin')
+                sound.playClick()
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                fontSize: '0.74rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                opacity: 0.5,
+                transition: 'opacity 0.2s',
+                padding: '0.2rem 0.4rem'
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.5')}
+              title="Event Host & Server Command Login"
+            >
+              <ShieldAlert size={12} /> Admin Portal
+            </button>
+          )}
+        </div>
+      </footer>
 
       {/* Toast Notification */}
       {toast && (
