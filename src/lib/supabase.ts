@@ -122,6 +122,13 @@ export function initSupabaseRealtime(onSyncEvent?: (type: string) => void): () =
       listeners.PLAYERS_SYNC.forEach((fn) => fn(payload))
       onSyncEvent?.('PLAYERS_UPDATED')
     })
+    .on('broadcast', { event: 'PLAYER_JOINED' }, ({ payload }) => {
+      // Direct player join announcement from contestant device
+      if (payload) {
+        listeners.PLAYERS_SYNC.forEach((fn) => fn([payload]))
+        onSyncEvent?.('PLAYERS_UPDATED')
+      }
+    })
     .on('broadcast', { event: 'CHALLENGES_SYNC' }, ({ payload }) => {
       listeners.CHALLENGES_SYNC.forEach((fn) => fn(payload))
       onSyncEvent?.('CHALLENGES_UPDATED')
@@ -228,3 +235,14 @@ export async function supabaseBroadcastScores(scores: ScoreEntry[]): Promise<voi
     })
   }
 }
+
+export async function supabaseBroadcastPlayerJoin(player: GamePlayer): Promise<void> {
+  if (realtimeChannel) {
+    await realtimeChannel.send({
+      type: 'broadcast',
+      event: 'PLAYER_JOINED',
+      payload: player
+    })
+  }
+}
+

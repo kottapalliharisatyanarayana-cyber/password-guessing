@@ -32,6 +32,7 @@ export type SessionStatus = 'lobby' | 'playing' | 'ended'
 export interface GameSession {
   id: string
   challengeId: string
+  challenge?: Challenge
   joinCode: string
   status: SessionStatus
   startedAt?: number // timestamp
@@ -48,6 +49,7 @@ export type PlayerStatus = 'waiting' | 'playing' | 'solved' | 'failed'
 export interface GamePlayer {
   id: string
   sessionId: string
+  joinCode?: string
   name: string
   avatar: string
   status: PlayerStatus

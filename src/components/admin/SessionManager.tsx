@@ -149,8 +149,8 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
       ) : (
         <div style={{ display: 'grid', gap: '1.5rem' }}>
           {sessions.map((sess) => {
-            const ch = challenges.find((c) => c.id === sess.challengeId)
-            const sessionPlayers = players.filter((p) => p.sessionId === sess.id)
+            const ch = sess.challenge || challenges.find((c) => c.id === sess.challengeId)
+            const sessionPlayers = players.filter((p) => p.sessionId === sess.id || (p.joinCode && p.joinCode === sess.joinCode))
 
             // Hint Countdown computation
             const elapsed = Math.max(0, sess.totalSeconds - sess.remainingSeconds)

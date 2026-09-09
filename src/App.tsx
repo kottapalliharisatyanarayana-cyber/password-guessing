@@ -14,6 +14,7 @@ import {
   isCloudActive,
   DEFAULT_SETTINGS
 } from './lib/storage'
+import { supabaseBroadcastPlayerJoin } from './lib/supabase'
 import { sound } from './lib/sound'
 import { Navbar } from './components/Navbar'
 import { PlayerLobby } from './components/player/PlayerLobby'
@@ -104,37 +105,44 @@ export function App() {
   // --- PLAYER ACTIONS ---
 
   const handleJoinSession = (sessionCode: string, playerName: string, avatar: string) => {
-    const targetSession = sessions.find(
-      (s) => s.joinCode.toUpperCase() === sessionCode.toUpperCase()
-    )
+    const cleanCode = sessionCode.trim().toUpperCase()
+    const targetSession =
+      sessions.find((s) => s.joinCode.toUpperCase() === cleanCode && s.status !== 'ended') ||
+      sessions.find((s) => s.joinCode.toUpperCase() === cleanCode)
     if (!targetSession) return
 
     const cleanName = playerName.trim()
 
     // Check if player with the same name is already in this session
     const existingIndex = players.findIndex(
-      (p) => p.sessionId === targetSession.id && p.name.toLowerCase().trim() === cleanName.toLowerCase()
+      (p) =>
+        (p.sessionId === targetSession.id || (p.joinCode && p.joinCode === targetSession.joinCode)) &&
+        p.name.toLowerCase().trim() === cleanName.toLowerCase()
     )
 
     let finalPlayerId: string
     let updatedPlayers: GamePlayer[]
+    let playerRecord: GamePlayer
 
     if (existingIndex >= 0) {
       // Reconnect existing player without creating duplicate entries
       const existing = players[existingIndex]
       finalPlayerId = existing.id
-      const updated: GamePlayer = {
+      playerRecord = {
         ...existing,
+        sessionId: targetSession.id,
+        joinCode: targetSession.joinCode,
         avatar,
         status: targetSession.status === 'playing' ? 'playing' : existing.status
       }
       updatedPlayers = [...players]
-      updatedPlayers[existingIndex] = updated
+      updatedPlayers[existingIndex] = playerRecord
     } else {
       // Register new player
-      const newPlayer: GamePlayer = {
+      playerRecord = {
         id: 'p_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
         sessionId: targetSession.id,
+        joinCode: targetSession.joinCode,
         name: cleanName,
         avatar,
         status: targetSession.status === 'playing' ? 'playing' : 'waiting',
@@ -143,12 +151,13 @@ export function App() {
         revealedHints: [],
         joinedAt: new Date().toISOString()
       }
-      finalPlayerId = newPlayer.id
-      updatedPlayers = [...players, newPlayer]
+      finalPlayerId = playerRecord.id
+      updatedPlayers = [...players, playerRecord]
     }
 
     setPlayers(updatedPlayers)
     storage.savePlayers(updatedPlayers)
+    supabaseBroadcastPlayerJoin(playerRecord)
 
     setActiveSessionId(targetSession.id)
     setCurrentPlayerId(finalPlayerId)
@@ -255,6 +264,7 @@ export function App() {
     const newSession: GameSession = {
       id: 'sess_' + Date.now(),
       challengeId,
+      challenge: ch,
       joinCode: code,
       status: 'lobby',
       totalSeconds: duration,
@@ -265,6 +275,7 @@ export function App() {
     const updated = [newSession, ...sessions]
     setSessions(updated)
     storage.saveSessions(updated)
+    storage.saveChallenges(challenges)
     showToast(`Room ${code} launched in Lobby mode`)
   }
 
@@ -433,9 +444,9 @@ export function App() {
 
   // Active Session & Player details
   const currentSession = sessions.find((s) => s.id === activeSessionId)
-  const currentChallenge = challenges.find((c) => c.id === currentSession?.challengeId)
+  const currentChallenge = currentSession?.challenge || challenges.find((c) => c.id === currentSession?.challengeId)
   const currentPlayer = players.find((p) => p.id === currentPlayerId)
-  const currentSessionPlayers = players.filter((p) => p.sessionId === activeSessionId)
+  const currentSessionPlayers = players.filter((p) => p.sessionId === activeSessionId || (currentSession && p.joinCode === currentSession.joinCode))
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>
@@ -461,7 +472,7 @@ export function App() {
       <main className="main-wrapper">
         {currentMode === 'player' ? (
           activeSessionId && currentSession && currentChallenge && currentPlayer ? (
-            currentSession.status === 'lobby' || currentPlayer.status === 'waiting' ? (
+            currentSession.status === 'lobby' ? (
               <PlayerLobby
                 sessions={sessions}
                 challenges={challenges}
