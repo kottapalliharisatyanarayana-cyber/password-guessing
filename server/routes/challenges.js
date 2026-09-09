@@ -1,5 +1,6 @@
 import express from 'express'
 import { Challenge } from '../models/Challenge.js'
+import { Session } from '../models/Session.js'
 
 const router = express.Router()
 const memoryChallenges = new Map()
@@ -86,7 +87,10 @@ router.delete('/all', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   memoryChallenges.delete(req.params.id)
   try {
-    await Challenge.deleteOne({ id: req.params.id })
+    await Promise.all([
+      Challenge.deleteOne({ id: req.params.id }),
+      Session.deleteMany({ challengeId: req.params.id })
+    ])
   } catch (err) {
     console.warn('⚠️ [Challenges API] MongoDB delete error:', err.message)
   }

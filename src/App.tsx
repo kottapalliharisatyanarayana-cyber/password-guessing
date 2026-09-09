@@ -126,8 +126,22 @@ export function App() {
 
   // Load initial state from reactive storage
   const reloadData = useCallback(() => {
-    setChallenges(storage.getChallenges())
-    setSessions(storage.getSessions())
+    const loadedChallenges = storage.getChallenges()
+    let loadedSessions = storage.getSessions()
+
+    // Automatically prune any orphan sessions whose challenge was deleted
+    if (loadedChallenges.length > 0) {
+      const validSessions = loadedSessions.filter(
+        (s) => s.challenge || loadedChallenges.some((c) => c.id === s.challengeId)
+      )
+      if (validSessions.length !== loadedSessions.length) {
+        loadedSessions = validSessions
+        storage.saveSessions(validSessions)
+      }
+    }
+
+    setChallenges(loadedChallenges)
+    setSessions(loadedSessions)
     setPlayers(storage.getPlayers())
     setScores(storage.getScores())
     const s = storage.getSettings()
@@ -506,6 +520,13 @@ export function App() {
     setChallenges(updated)
     storage.saveChallenges(updated)
     apiDeleteChallenge(id).catch(() => {})
+
+    // Also remove any sessions associated with this deleted challenge
+    const orphanedSessions = sessions.filter((s) => s.challengeId === id)
+    orphanedSessions.forEach((s) => apiDeleteSession(s.id).catch(() => {}))
+    const updatedSessions = sessions.filter((s) => s.challengeId !== id)
+    setSessions(updatedSessions)
+    storage.saveSessions(updatedSessions)
   }
 
   const handleClearLeaderboard = () => {

@@ -33,7 +33,7 @@ const KEYS = {
   PLAYERS: 'crackvault_players',
   SCORES: 'crackvault_scores',
   SETTINGS: 'crackvault_settings',
-  CLEAN_V5: 'crackvault_clean_v5'
+  CLEAN_V6: 'crackvault_clean_v6'
 }
 
 // Default Seed Challenges: Clean slate (0 challenges)
@@ -98,10 +98,10 @@ export function subscribeStateChange(callback: (action: string, payload: unknown
 // One-time cleanup for fresh clean state (clears old lingering zombie sessions)
 function ensureCleanState() {
   if (typeof localStorage === 'undefined') return
-  if (localStorage.getItem(KEYS.CLEAN_V5) !== 'true') {
+  if (localStorage.getItem(KEYS.CLEAN_V6) !== 'true') {
     localStorage.removeItem(KEYS.SESSIONS)
     localStorage.setItem(KEYS.SESSIONS, JSON.stringify([]))
-    localStorage.setItem(KEYS.CLEAN_V5, 'true')
+    localStorage.setItem(KEYS.CLEAN_V6, 'true')
   }
 }
 ensureCleanState()
@@ -243,7 +243,8 @@ export const storage = {
       return []
     }
     try {
-      return JSON.parse(raw)
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed.filter((s) => s && s.id && s.joinCode) : []
     } catch {
       return []
     }
@@ -349,7 +350,7 @@ export const storage = {
     localStorage.setItem(KEYS.SCORES, JSON.stringify([]))
     localStorage.setItem(KEYS.SESSIONS, JSON.stringify([]))
     localStorage.setItem(KEYS.PLAYERS, JSON.stringify([]))
-    localStorage.setItem(KEYS.CLEAN_V5, 'true')
+    localStorage.setItem(KEYS.CLEAN_V6, 'true')
     broadcastStateChange('ALL_RESET')
     if (!isIncomingCloudUpdate) {
       cloudSaveChallenges([])

@@ -128,6 +128,11 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   }
 
+  // Filter sessions to only valid sessions with an existing challenge
+  const validSessions = sessions.filter((sess) => {
+    return Boolean(sess.challenge || challenges.some((c) => c.id === sess.challengeId))
+  })
+
   return (
     <div>
       {/* Action Header */}
@@ -144,7 +149,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
       </div>
 
       {/* Sessions Grid */}
-      {sessions.length === 0 ? (
+      {validSessions.length === 0 ? (
         <div className="glass-panel" style={{ padding: '3.5rem 2rem', textAlign: 'center' }}>
           <Radio size={40} style={{ color: 'var(--text-muted)', margin: '0 auto 1rem' }} />
           <h3 style={{ fontSize: '1.15rem', color: '#fff', marginBottom: '0.35rem' }}>No Active Game Sessions</h3>
@@ -165,7 +170,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
         </div>
       ) : (
         <div style={{ display: 'grid', gap: '1.5rem' }}>
-          {sessions.map((sess) => {
+          {validSessions.map((sess) => {
             const ch = sess.challenge || challenges.find((c) => c.id === sess.challengeId)
             const rawSessionPlayers = players.filter(
               (p) =>

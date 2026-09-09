@@ -12,6 +12,7 @@ router.get('/', async (req, res) => {
     const query = req.query.status ? { status: req.query.status } : {}
     const sessions = await Session.find(query).sort({ updatedAt: -1 }).limit(100)
     // Update memory cache
+    memorySessions.clear()
     sessions.forEach((s) => memorySessions.set(s.id, s.toObject ? s.toObject() : s))
     return res.json(sessions)
   } catch (err) {
