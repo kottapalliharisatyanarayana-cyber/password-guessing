@@ -192,10 +192,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           onSaveChallenge={onSaveChallenge}
           onDeleteChallenge={onDeleteChallenge}
           onNotify={onNotify}
-          onLaunchSession={(challengeId) => {
-            onCreateSession(challengeId)
-            setActiveTab('sessions')
-          }}
         />
       )}
 

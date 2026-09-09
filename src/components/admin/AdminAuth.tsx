@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { sound } from '../../lib/sound'
 import { apiGetSettings, apiCreateAdmin } from '../../lib/api'
 import { AppSettings } from '../../types'
-import { Shield, Lock, User, Eye, EyeOff, ArrowRight, UserPlus, KeyRound, Sparkles, CheckCircle2 } from 'lucide-react'
+import { Shield, Lock, User, Eye, EyeOff, ArrowRight, UserPlus, KeyRound, CheckCircle2 } from 'lucide-react'
 
 interface AdminAuthProps {
   onSuccess: () => void
@@ -67,7 +67,7 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({
       onSuccess()
     } else {
       sound.playError()
-      setErrorMsg('Invalid administrator credentials. Try the default credentials below or create a new admin account.')
+      setErrorMsg('Invalid administrator credentials. Please check your username and password.')
       setShake(true)
       setTimeout(() => setShake(false), 500)
     }
@@ -123,11 +123,7 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({
     }
   }
 
-  const handleQuickFill = () => {
-    setUsername(liveExpectedUser || 'admin')
-    setPassword(liveExpectedPass || 'admin123')
-    sound.playClick()
-  }
+
 
   return (
     <div className="animate-fade-in-up" style={{ maxWidth: '460px', margin: '3.5rem auto' }}>
@@ -281,6 +277,7 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({
                   placeholder="e.g. admin"
                   autoFocus
                   required
+                  autoComplete="off"
                   style={{ paddingLeft: '2.5rem' }}
                 />
                 <User
@@ -309,6 +306,7 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter passcode"
                   required
+                  autoComplete="current-password"
                   style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }}
                 />
                 <Lock
@@ -340,25 +338,7 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({
               </div>
             </div>
 
-            {/* Quick Fill Default Button */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1.25rem' }}>
-              <button
-                type="button"
-                onClick={handleQuickFill}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--neon-cyan)',
-                  fontSize: '0.75rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.3rem'
-                }}
-              >
-                <Sparkles size={12} /> Auto-fill Default ({liveExpectedUser || 'admin'} / {liveExpectedPass || 'admin123'})
-              </button>
-            </div>
+            <div style={{ marginBottom: '1.25rem' }} />
 
             {/* Login Submit Button */}
             <button

@@ -1,4 +1,5 @@
 import express from 'express'
+import mongoose from 'mongoose'
 import { Session } from '../models/Session.js'
 
 const router = express.Router()
@@ -8,37 +9,45 @@ const memorySessions = new Map()
 
 // GET /api/sessions - list sessions
 router.get('/', async (req, res) => {
-  try {
-    const query = req.query.status ? { status: req.query.status } : {}
-    const sessions = await Session.find(query).sort({ updatedAt: -1 }).limit(100)
-    // Update memory cache
-    memorySessions.clear()
-    sessions.forEach((s) => memorySessions.set(s.id, s.toObject ? s.toObject() : s))
-    return res.json(sessions)
-  } catch (err) {
-    console.warn('⚠️ [Sessions API] MongoDB read error, serving from memory cache:', err.message)
-    const all = Array.from(memorySessions.values())
-    if (req.query.status) {
-      return res.json(all.filter((s) => s.status === req.query.status))
+  if (mongoose.connection.readyState === 1) {
+    try {
+      const query = req.query.status ? { status: req.query.status } : {}
+      const sessions = await Session.find(query).sort({ updatedAt: -1 }).limit(100)
+      // Update memory cache without clearing on filtered requests
+      if (!req.query.status) {
+        memorySessions.clear()
+      }
+      sessions.forEach((s) => memorySessions.set(s.id, s.toObject ? s.toObject() : s))
+      return res.json(sessions)
+    } catch (err) {
+      console.warn('⚠️ [Sessions API] MongoDB read error, serving from memory cache:', err.message)
     }
-    return res.json(all)
   }
+
+  const all = Array.from(memorySessions.values())
+  if (req.query.status) {
+    return res.json(all.filter((s) => s.status === req.query.status))
+  }
+  return res.json(all)
 })
 
 // GET /api/sessions/code/:joinCode - find active session by PIN code
 router.get('/code/:joinCode', async (req, res) => {
   const cleanCode = req.params.joinCode.trim().toUpperCase()
-  try {
-    const session =
-      (await Session.findOne({ joinCode: cleanCode, status: { $ne: 'ended' } })) ||
-      (await Session.findOne({ joinCode: cleanCode }))
 
-    if (session) {
-      memorySessions.set(session.id, session.toObject ? session.toObject() : session)
-      return res.json(session)
+  if (mongoose.connection.readyState === 1) {
+    try {
+      const session =
+        (await Session.findOne({ joinCode: cleanCode, status: { $ne: 'ended' } })) ||
+        (await Session.findOne({ joinCode: cleanCode }))
+
+      if (session) {
+        memorySessions.set(session.id, session.toObject ? session.toObject() : session)
+        return res.json(session)
+      }
+    } catch (err) {
+      console.warn('⚠️ [Sessions API] MongoDB findOne error, falling back to memory:', err.message)
     }
-  } catch (err) {
-    console.warn('⚠️ [Sessions API] MongoDB findOne error, falling back to memory:', err.message)
   }
 
   // Fallback to memory
@@ -59,13 +68,15 @@ router.get('/code/:joinCode', async (req, res) => {
 
 // GET /api/sessions/:id - get session by ID
 router.get('/:id', async (req, res) => {
-  try {
-    const session = await Session.findOne({ id: req.params.id })
-    if (session) {
-      return res.json(session)
+  if (mongoose.connection.readyState === 1) {
+    try {
+      const session = await Session.findOne({ id: req.params.id })
+      if (session) {
+        return res.json(session)
+      }
+    } catch (err) {
+      console.warn('⚠️ [Sessions API] MongoDB findById error:', err.message)
     }
-  } catch (err) {
-    console.warn('⚠️ [Sessions API] MongoDB findById error:', err.message)
   }
 
   const memSession = memorySessions.get(req.params.id)
@@ -81,21 +92,24 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Session id and joinCode are required' })
   }
 
-  // Always update in-memory immediately
+  // Always update in-memory immediately (<1ms response)
   memorySessions.set(data.id, data)
 
-  // Persist to MongoDB Atlas
-  try {
-    const session = await Session.findOneAndUpdate(
-      { id: data.id },
-      { $set: data },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
-    )
-    return res.status(200).json(session || data)
-  } catch (err) {
-    console.warn('⚠️ [Sessions API] MongoDB save error (will serve from memory):', err.message)
-    return res.status(200).json(data)
+  // Persist to MongoDB Atlas if online
+  if (mongoose.connection.readyState === 1) {
+    try {
+      const session = await Session.findOneAndUpdate(
+        { id: data.id },
+        { $set: data },
+        { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
+      )
+      return res.status(200).json(session || data)
+    } catch (err) {
+      console.warn('⚠️ [Sessions API] MongoDB save error (will serve from memory):', err.message)
+    }
   }
+
+  return res.status(200).json(data)
 })
 
 // POST /api/sessions/batch - bulk sync sessions from client
@@ -109,25 +123,28 @@ router.post('/batch', async (req, res) => {
     if (s.id) memorySessions.set(s.id, s)
   })
 
-  try {
-    const ops = sessions.map((s) => ({
-      updateOne: {
-        filter: { id: s.id },
-        update: { $set: s },
-        upsert: true
+  if (mongoose.connection.readyState === 1) {
+    try {
+      const ops = sessions.map((s) => ({
+        updateOne: {
+          filter: { id: s.id },
+          update: { $set: s },
+          upsert: true
+        }
+      }))
+
+      if (ops.length > 0) {
+        await Session.bulkWrite(ops)
       }
-    }))
 
-    if (ops.length > 0) {
-      await Session.bulkWrite(ops)
+      const current = await Session.find().sort({ updatedAt: -1 }).limit(100)
+      return res.json(current)
+    } catch (err) {
+      console.warn('⚠️ [Sessions API] MongoDB bulkWrite error:', err.message)
     }
-
-    const current = await Session.find().sort({ updatedAt: -1 }).limit(100)
-    return res.json(current)
-  } catch (err) {
-    console.warn('⚠️ [Sessions API] MongoDB bulkWrite error:', err.message)
-    return res.json(Array.from(memorySessions.values()))
   }
+
+  return res.json(Array.from(memorySessions.values()))
 })
 
 // PATCH /api/sessions/:id - partial update (e.g. status, timer, winner)
@@ -136,15 +153,17 @@ router.patch('/:id', async (req, res) => {
   const updated = { ...existing, ...req.body }
   memorySessions.set(req.params.id, updated)
 
-  try {
-    const session = await Session.findOneAndUpdate(
-      { id: req.params.id },
-      { $set: req.body },
-      { returnDocument: 'after' }
-    )
-    if (session) return res.json(session)
-  } catch (err) {
-    console.warn('⚠️ [Sessions API] MongoDB patch error:', err.message)
+  if (mongoose.connection.readyState === 1) {
+    try {
+      const session = await Session.findOneAndUpdate(
+        { id: req.params.id },
+        { $set: req.body },
+        { returnDocument: 'after' }
+      )
+      if (session) return res.json(session)
+    } catch (err) {
+      console.warn('⚠️ [Sessions API] MongoDB patch error:', err.message)
+    }
   }
 
   return res.json(updated)
@@ -153,22 +172,27 @@ router.patch('/:id', async (req, res) => {
 // DELETE /api/sessions/all - clear all sessions
 router.delete('/all', async (req, res) => {
   memorySessions.clear()
-  try {
-    await Session.deleteMany({})
-    return res.json({ success: true, message: 'All sessions deleted from MongoDB' })
-  } catch (err) {
-    console.warn('⚠️ [Sessions API] MongoDB delete error:', err.message)
-    return res.status(500).json({ error: err.message })
+  if (mongoose.connection.readyState === 1) {
+    try {
+      await Session.deleteMany({})
+      return res.json({ success: true, message: 'All sessions deleted from MongoDB' })
+    } catch (err) {
+      console.warn('⚠️ [Sessions API] MongoDB delete error:', err.message)
+      return res.status(500).json({ error: err.message })
+    }
   }
+  return res.json({ success: true, message: 'All sessions deleted from memory' })
 })
 
 // DELETE /api/sessions/:id - remove session
 router.delete('/:id', async (req, res) => {
   memorySessions.delete(req.params.id)
-  try {
-    await Session.deleteOne({ id: req.params.id })
-  } catch (err) {
-    console.warn('⚠️ [Sessions API] MongoDB delete error:', err.message)
+  if (mongoose.connection.readyState === 1) {
+    try {
+      await Session.deleteOne({ id: req.params.id })
+    } catch (err) {
+      console.warn('⚠️ [Sessions API] MongoDB delete error:', err.message)
+    }
   }
   return res.json({ success: true, id: req.params.id })
 })

@@ -73,6 +73,18 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
     }
   }, [challenges, selectedChallengeId])
 
+  // Live ticking clock for active sessions in Mission Control
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const hasPlaying = sessions.some((s) => s.status === 'playing')
+    if (!hasPlaying) return
+    const timer = setInterval(() => {
+      setNow(Date.now())
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [sessions])
+
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
   const [qrHost, setQrHost] = useState<string>(
     typeof window !== 'undefined'
@@ -130,10 +142,8 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   }
 
-  // Filter sessions to only valid sessions with an existing challenge
-  const validSessions = sessions.filter((sess) => {
-    return Boolean(sess.challenge || challenges.some((c) => c.id === sess.challengeId))
-  })
+  // Keep all sessions visible in Mission Control (never hide active rooms)
+  const validSessions = sessions
 
   return (
     <div>
@@ -192,8 +202,12 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
               return a.name.localeCompare(b.name)
             })
 
-            // Hint Countdown computation
-            const elapsed = Math.max(0, sess.totalSeconds - sess.remainingSeconds)
+            // Live Clock & Hint Countdown computation
+            const currentRemaining =
+              sess.status === 'playing' && sess.startedAt
+                ? Math.max(0, sess.totalSeconds - Math.floor((now - sess.startedAt) / 1000))
+                : sess.remainingSeconds
+            const elapsed = Math.max(0, sess.totalSeconds - currentRemaining)
             const forceUnlocked = sess.forceUnlockedHints || []
             let nextHintToReveal: { index: number; label: string; countdown: number } | null = null
             let totalHintsCount = 0
@@ -316,7 +330,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
                     <div>
                       <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block' }}>CLOCK REMAINING</span>
                       <strong style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', color: sess.status === 'playing' ? 'var(--neon-mint)' : '#cbd5e1' }}>
-                        {formatSeconds(sess.remainingSeconds)}
+                        {formatSeconds(currentRemaining)}
                       </strong>
                     </div>
                     <div>

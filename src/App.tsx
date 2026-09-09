@@ -124,43 +124,40 @@ export function App() {
     setTimeout(() => setToast(null), 3200)
   }, [])
 
-  // Load initial state from reactive storage
-  const reloadData = useCallback(() => {
-    const loadedChallenges = storage.getChallenges()
-    let loadedSessions = storage.getSessions()
-
-    // Automatically prune any orphan sessions whose challenge was deleted
-    if (loadedChallenges.length > 0) {
-      const validSessions = loadedSessions.filter(
-        (s) => s.challenge || loadedChallenges.some((c) => c.id === s.challengeId)
-      )
-      if (validSessions.length !== loadedSessions.length) {
-        loadedSessions = validSessions
-        storage.saveSessions(validSessions)
-      }
+  // Targeted, non-destructive state reload from reactive storage
+  const reloadData = useCallback((eventType?: string) => {
+    if (!eventType || eventType === 'CHALLENGES_UPDATED' || eventType === 'ALL_RESET') {
+      setChallenges(storage.getChallenges())
     }
-
-    setChallenges(loadedChallenges)
-    setSessions(loadedSessions)
-    setPlayers(storage.getPlayers())
-    setScores(storage.getScores())
-    const s = storage.getSettings()
-    setSettings(s)
-    sound.setEnabled(s.soundEnabled)
+    if (!eventType || eventType === 'SESSIONS_UPDATED' || eventType === 'ALL_RESET') {
+      setSessions(storage.getSessions())
+    }
+    if (!eventType || eventType === 'PLAYERS_UPDATED' || eventType === 'ALL_RESET') {
+      setPlayers(storage.getPlayers())
+    }
+    if (!eventType || eventType === 'SCORES_UPDATED' || eventType === 'ALL_RESET') {
+      setScores(storage.getScores())
+    }
+    if (!eventType || eventType === 'SETTINGS_UPDATED' || eventType === 'ALL_RESET') {
+      const s = storage.getSettings()
+      setSettings(s)
+      sound.setEnabled(s.soundEnabled)
+    }
     setCloudConnected(isCloudActive())
   }, [])
 
   useEffect(() => {
+    // Initial complete load
     reloadData()
 
-    // Cross-tab reactive listener
-    const unsubscribeLocal = subscribeStateChange(() => {
-      reloadData()
+    // Cross-tab reactive listener (granular per event action)
+    const unsubscribeLocal = subscribeStateChange((action) => {
+      reloadData(action)
     })
 
     // Realtime Cloud listener across separate devices via Express & MongoDB Atlas
-    const unsubscribeCloud = initCloudSync(() => {
-      reloadData()
+    const unsubscribeCloud = initCloudSync((eventType) => {
+      reloadData(eventType)
     })
 
     return () => {

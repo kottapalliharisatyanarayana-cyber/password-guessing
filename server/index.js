@@ -80,9 +80,14 @@ app.use(
 )
 app.use(express.json({ limit: '10mb' }))
 
-// MongoDB Atlas Connection Manager
+// MongoDB Atlas Connection Manager with cooldown to prevent API request blocking
 let dbStatus = 'disconnected'
 let connectionPromise = null
+let lastConnectAttempt = 0
+const RECONNECT_COOLDOWN_MS = 25000
+
+// Disable command buffering so disconnected operations fail immediately (<1ms) instead of hanging 10 seconds
+mongoose.set('bufferCommands', false)
 
 export async function connectToDatabase() {
   if (mongoose.connection.readyState === 1) {
@@ -90,11 +95,18 @@ export async function connectToDatabase() {
     return mongoose.connection
   }
 
+  const now = Date.now()
+  if (now - lastConnectAttempt < RECONNECT_COOLDOWN_MS) {
+    // Within cooldown: serve immediately from in-memory fallback without 5-second blocking lag
+    return null
+  }
+
   if (!connectionPromise) {
+    lastConnectAttempt = now
     connectionPromise = mongoose
       .connect(MONGODB_URI, {
-        serverSelectionTimeoutMS: 5000,
-        connectTimeoutMS: 5000
+        serverSelectionTimeoutMS: 2000,
+        connectTimeoutMS: 2000
       })
       .then((m) => {
         dbStatus = 'connected'
@@ -104,8 +116,8 @@ export async function connectToDatabase() {
       .catch((err) => {
         dbStatus = 'error'
         connectionPromise = null
-        console.error('❌ [CrackVault Backend] MongoDB connection error:', err.message)
-        throw err
+        console.warn('⚠️ [CrackVault Backend] MongoDB offline/standby (serving from memory cache):', err.message)
+        return null
       })
   }
 
@@ -115,10 +127,12 @@ export async function connectToDatabase() {
 // Ensure database connection middleware for all /api calls
 app.use(async (req, res, next) => {
   if (req.path.startsWith('/api') && req.path !== '/api/health') {
-    try {
-      await connectToDatabase()
-    } catch {
-      // In-memory fallback routes will respond if MongoDB is unavailable
+    if (mongoose.connection.readyState !== 1) {
+      try {
+        await connectToDatabase()
+      } catch {
+        // Handled by in-memory fallback
+      }
     }
   }
   next()

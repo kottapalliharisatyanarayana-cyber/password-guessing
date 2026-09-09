@@ -345,6 +345,78 @@ export function setMongoOnline(online: boolean) {
   isMongoOnline = online
 }
 
+// Helper to quickly compare session lists without serializing entire objects
+function sessionsSignature(list: GameSession[]): string {
+  return list
+    .map(
+      (s) =>
+        `${s.id}:${s.status}:${s.startedAt || 0}:${s.forceUnlockedHints?.length || 0}:${s.winnerName || ''}:${s.totalSeconds || 0}:${s.remainingSeconds || 0}`
+    )
+    .sort()
+    .join('|')
+}
+
+// Intelligent non-destructive reconciliation of local and remote sessions
+export function reconcileSessions(
+  local: GameSession[],
+  remote: GameSession[]
+): { merged: GameSession[]; needsPushToRemote: boolean } {
+  const map = new Map<string, GameSession>()
+  let needsPushToRemote = false
+
+  // 1. Index remote sessions
+  remote.forEach((r) => {
+    if (r && r.id) {
+      map.set(r.id, r)
+    }
+  })
+
+  // 2. Reconcile with local sessions
+  local.forEach((l) => {
+    if (!l || !l.id) return
+    const r = map.get(l.id)
+    if (!r) {
+      // Local has a session that remote doesn't have yet (e.g. newly launched in UI)
+      // KEEP IT! Never delete active sessions from local if remote is empty or lagging
+      map.set(l.id, l)
+      needsPushToRemote = true
+    } else {
+      // Both have the session: resolve conflicting states intelligently
+      const statusWeight = (status?: string) => {
+        if (status === 'ended') return 4
+        if (status === 'playing') return 3
+        if (status === 'paused') return 2
+        return 1
+      }
+      const lWeight = statusWeight(l.status)
+      const rWeight = statusWeight(r.status)
+
+      if (lWeight > rWeight) {
+        // Local is ahead (e.g. started playing while remote poll was in flight)
+        map.set(l.id, { ...r, ...l })
+        needsPushToRemote = true
+      } else if (rWeight > lWeight) {
+        // Remote is ahead (e.g. ended by host)
+        map.set(l.id, { ...l, ...r })
+      } else {
+        // Equal status: pick whichever has more hints/winner or keep local challenge attached
+        const lHints = l.forceUnlockedHints?.length || 0
+        const rHints = r.forceUnlockedHints?.length || 0
+        map.set(l.id, {
+          ...r,
+          ...l,
+          challenge: l.challenge || r.challenge,
+          forceUnlockedHints: lHints >= rHints ? l.forceUnlockedHints : r.forceUnlockedHints,
+          winnerName: r.winnerName || l.winnerName,
+          winnerScore: r.winnerScore !== undefined ? r.winnerScore : l.winnerScore
+        })
+      }
+    }
+  })
+
+  return { merged: Array.from(map.values()), needsPushToRemote }
+}
+
 // --- CLOUD SYNC INITIALIZATION & LISTENER SUBSCRIPTION ---
 
 let unsubscribers: Array<(() => void) | null> = []
@@ -354,48 +426,70 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
   unsubscribers.forEach((unsub) => unsub && unsub())
   unsubscribers = []
 
-
-
-  // --- 2. EXPRESS + MONGODB ATLAS REALTIME SYNC (PRIMARY) ---
   let isSyncing = false
-  const syncWithMongoBackend = async () => {
+  let cycleCount = 0
+
+  const syncWithMongoBackend = async (forceAll: boolean = false) => {
+    // If tab is in background and not forcing, skip cycles to conserve CPU & network
+    if (typeof document !== 'undefined' && document.hidden && !forceAll && cycleCount % 4 !== 0) {
+      cycleCount++
+      return
+    }
+
     if (isSyncing) return
     isSyncing = true
+    cycleCount++
+
     try {
+      const syncChallengesAndScores = forceAll || cycleCount % 3 === 0
+
+      // Run live session + player sync every 3s; run heavy challenges + scores every 9s
       const [remoteSessions, remotePlayers, remoteChallenges, remoteScores] = await Promise.all([
         apiGetSessions(),
         apiGetPlayers(),
-        apiGetChallenges(),
-        apiGetScores()
+        syncChallengesAndScores ? apiGetChallenges() : Promise.resolve(null),
+        syncChallengesAndScores ? apiGetScores() : Promise.resolve(null)
       ])
 
       isMongoOnline = remoteSessions !== null || remotePlayers !== null
 
+      // Reconcile Sessions (never wipe local active sessions!)
       if (remoteSessions && Array.isArray(remoteSessions)) {
         const local = storage.getSessions()
-        // NEVER auto-create or auto-push sessions to MongoDB. If remote is empty, local becomes empty.
-        if (JSON.stringify(remoteSessions) !== JSON.stringify(local)) {
+        const { merged, needsPushToRemote } = reconcileSessions(local, remoteSessions)
+
+        const localSig = sessionsSignature(local)
+        const mergedSig = sessionsSignature(merged)
+
+        if (localSig !== mergedSig) {
           try {
-            localStorage.setItem(KEYS.SESSIONS, JSON.stringify(remoteSessions))
+            localStorage.setItem(KEYS.SESSIONS, JSON.stringify(merged))
           } catch {}
           broadcastStateChange('SESSIONS_UPDATED')
           onSyncEvent?.('SESSIONS_UPDATED')
         }
+
+        // If local had sessions unknown to MongoDB Atlas, push them up
+        if (needsPushToRemote && merged.length > 0) {
+          apiSyncSessions(merged).catch(() => {})
+        }
       }
 
+      // Reconcile Players
       if (remotePlayers && Array.isArray(remotePlayers)) {
         const local = storage.getPlayers()
-        const deduped = deduplicatePlayers(remotePlayers)
-        if (JSON.stringify(deduped) !== JSON.stringify(local)) {
-          localStorage.setItem(KEYS.PLAYERS, JSON.stringify(deduped))
+        const combined = deduplicatePlayers([...remotePlayers, ...local])
+        if (combined.length !== local.length || JSON.stringify(combined) !== JSON.stringify(local)) {
+          localStorage.setItem(KEYS.PLAYERS, JSON.stringify(combined))
           broadcastStateChange('PLAYERS_UPDATED')
           onSyncEvent?.('PLAYERS_UPDATED')
         }
       }
 
+      // Reconcile Challenges
       if (remoteChallenges && Array.isArray(remoteChallenges)) {
         const local = storage.getChallenges()
-        if (JSON.stringify(remoteChallenges) !== JSON.stringify(local)) {
+        if (remoteChallenges.length !== local.length || remoteChallenges.some((c, i) => !local[i] || c.id !== local[i].id)) {
           try {
             localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(remoteChallenges))
           } catch {}
@@ -404,10 +498,11 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
         }
       }
 
+      // Reconcile Scores
       if (remoteScores && Array.isArray(remoteScores)) {
         const local = storage.getScores()
         const sorted = [...remoteScores].sort((a, b) => (b.score || 0) - (a.score || 0))
-        if (JSON.stringify(sorted) !== JSON.stringify(local)) {
+        if (sorted.length !== local.length || (sorted[0]?.id !== local[0]?.id)) {
           localStorage.setItem(KEYS.SCORES, JSON.stringify(sorted))
           broadcastStateChange('SCORES_UPDATED')
           onSyncEvent?.('SCORES_UPDATED')
@@ -421,11 +516,22 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
   }
 
   // Initial sync immediately
-  syncWithMongoBackend()
+  syncWithMongoBackend(true)
 
-  // Real-time polling every 1.5 seconds for cross-device synchronization
-  const pollInterval = setInterval(syncWithMongoBackend, 1500)
+  // Real-time polling every 3.0s (instead of 1.5s) to eliminate CPU lag and API storming
+  const pollInterval = setInterval(() => syncWithMongoBackend(false), 3000)
   unsubscribers.push(() => clearInterval(pollInterval))
+
+  // Instant sync when tab becomes visible again
+  if (typeof document !== 'undefined') {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        syncWithMongoBackend(false)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    unsubscribers.push(() => document.removeEventListener('visibilitychange', handleVisibilityChange))
+  }
 
   return () => {
     unsubscribers.forEach((unsub) => unsub && unsub())
