@@ -110,7 +110,7 @@ Clues unlock **strictly based on the mission countdown clock** configured by the
 sequenceDiagram
     autonumber
     actor Admin
-    participant Server as Supabase (Realtime + DB)
+    participant Server as Express + MongoDB Atlas (REST + Realtime Sync)
     actor Player1 as Player 1 (Contestant)
     actor Player2 as Player 2 (Contestant)
 
@@ -166,8 +166,10 @@ crackvault/
 ├── vite.config.ts               # Vite configuration plugins & paths
 ├── tailwind.config.js           # Cyberpunk color tokens & animations
 │
-├── supabase/
-│   └── migrations/              # PostgreSQL schema & RLS migrations
+├── server/                      # Express REST API & MongoDB Atlas backend
+│   ├── index.js                 # Server entry point & DB connection
+│   ├── models/                  # Mongoose data models (Challenge, Session, Player, Score, Settings)
+│   └── routes/                  # API endpoints for CRUD & real-time polling sync
 │
 └── src/
     ├── main.tsx                 # React DOM mount point
@@ -175,7 +177,8 @@ crackvault/
     ├── index.css                # Custom CSS variables, glow utilities, keyframes
     │
     ├── lib/
-    │   └── supabase.ts          # Supabase client singleton & generated database types
+    │   ├── api.ts               # Express + MongoDB Atlas REST API client
+    │   └── storage.ts           # Hybrid local cache & polling sync engine
     │
     └── components/
         ├── Home.tsx             # Landing hero & quick-join portal
@@ -228,7 +231,7 @@ The platform relies on 5 primary tables in PostgreSQL with Row Level Security (R
 ### Prerequisites
 - [Node.js](https://nodejs.org/) (version 18.0.0 or higher)
 - [npm](https://www.npmjs.com/) or [pnpm](https://pnpm.io/)
-- A free [Supabase](https://supabase.com/) project
+- A free [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) cluster (or local MongoDB)
 
 ---
 

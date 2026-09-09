@@ -17,7 +17,8 @@ import {
   FileText,
   Upload,
   X,
-  ExternalLink
+  ExternalLink,
+  Rocket
 } from 'lucide-react'
 
 interface ChallengeCrudProps {
@@ -25,6 +26,7 @@ interface ChallengeCrudProps {
   onSaveChallenge: (challenge: Challenge) => Promise<void> | void
   onDeleteChallenge: (id: string) => void
   onNotify: (msg: string) => void
+  onLaunchSession?: (challengeId: string) => void
 }
 
 const formatSeconds = (sec: number) => {
@@ -61,7 +63,8 @@ export const ChallengeCrud: React.FC<ChallengeCrudProps> = ({
   challenges,
   onSaveChallenge,
   onDeleteChallenge,
-  onNotify
+  onNotify,
+  onLaunchSession
 }) => {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('ALL')
@@ -190,7 +193,7 @@ export const ChallengeCrud: React.FC<ChallengeCrudProps> = ({
     reader.readAsDataURL(file)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, andLaunch: boolean = false) => {
     e.preventDefault()
     if (!formData.title.trim() || !formData.password.trim()) {
       alert('Please enter a challenge title and target password.')
@@ -218,6 +221,9 @@ export const ChallengeCrud: React.FC<ChallengeCrudProps> = ({
       setShowModal(false)
       sound.playClick()
       onNotify(editingChallenge ? 'Challenge updated successfully' : 'New challenge created!')
+      if (andLaunch && onLaunchSession) {
+        onLaunchSession(saved.id)
+      }
     } catch (err: any) {
       console.error('Error saving challenge:', err)
       alert('Failed to save challenge: ' + (err?.message || 'Unknown error'))
@@ -384,7 +390,23 @@ export const ChallengeCrud: React.FC<ChallengeCrudProps> = ({
                     </span>
                   </td>
                   <td style={{ padding: '0.85rem 1.25rem', textAlign: 'right' }}>
-                    <div style={{ display: 'inline-flex', gap: '0.45rem' }}>
+                    <div style={{ display: 'inline-flex', gap: '0.45rem', alignItems: 'center' }}>
+                      {onLaunchSession && (
+                        <button
+                          className="btn-primary"
+                          style={{
+                            padding: '0.35rem 0.75rem',
+                            fontSize: '0.75rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem'
+                          }}
+                          onClick={() => onLaunchSession(c.id)}
+                          title="Launch Live Session & Open Mission Control"
+                        >
+                          <Rocket size={13} /> Launch Session
+                        </button>
+                      )}
                       <button className="btn-icon" onClick={() => handleOpenEdit(c)} title="Edit Challenge">
                         <Edit2 size={14} />
                       </button>
@@ -858,13 +880,24 @@ export const ChallengeCrud: React.FC<ChallengeCrudProps> = ({
               </div>
 
               {/* Actions */}
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
                 <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary">
+                <button type="submit" className="btn-secondary">
                   Save Challenge
                 </button>
+                {onLaunchSession && (
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={(e) => handleSubmit(e, true)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                    title="Save challenge and immediately launch live session in Mission Control"
+                  >
+                    <Rocket size={15} /> Save &amp; Launch Session
+                  </button>
+                )}
               </div>
             </form>
           </div>

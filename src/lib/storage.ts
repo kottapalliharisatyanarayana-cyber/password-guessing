@@ -21,7 +21,7 @@ const KEYS = {
   PLAYERS: 'crackvault_players',
   SCORES: 'crackvault_scores',
   SETTINGS: 'crackvault_settings',
-  CLEAN_V6: 'crackvault_clean_v6'
+  CLEAN_V7: 'crackvault_clean_v7'
 }
 
 // Default Seed Challenges: Clean slate (0 challenges)
@@ -83,13 +83,19 @@ export function subscribeStateChange(callback: (action: string, payload: unknown
   return () => channel.removeEventListener('message', listener)
 }
 
-// One-time cleanup for fresh clean state (clears old lingering zombie sessions)
+// One-time cleanup for fresh clean state (clears old lingering data and establishes 0-data baseline)
 function ensureCleanState() {
   if (typeof localStorage === 'undefined') return
-  if (localStorage.getItem(KEYS.CLEAN_V6) !== 'true') {
+  if (localStorage.getItem(KEYS.CLEAN_V7) !== 'true') {
+    localStorage.removeItem(KEYS.CHALLENGES)
+    localStorage.setItem(KEYS.CHALLENGES, JSON.stringify([]))
     localStorage.removeItem(KEYS.SESSIONS)
     localStorage.setItem(KEYS.SESSIONS, JSON.stringify([]))
-    localStorage.setItem(KEYS.CLEAN_V6, 'true')
+    localStorage.removeItem(KEYS.PLAYERS)
+    localStorage.setItem(KEYS.PLAYERS, JSON.stringify([]))
+    localStorage.removeItem(KEYS.SCORES)
+    localStorage.setItem(KEYS.SCORES, JSON.stringify([]))
+    localStorage.setItem(KEYS.CLEAN_V7, 'true')
   }
 }
 ensureCleanState()
@@ -323,7 +329,7 @@ export const storage = {
     localStorage.setItem(KEYS.SCORES, JSON.stringify([]))
     localStorage.setItem(KEYS.SESSIONS, JSON.stringify([]))
     localStorage.setItem(KEYS.PLAYERS, JSON.stringify([]))
-    localStorage.setItem(KEYS.CLEAN_V6, 'true')
+    localStorage.setItem(KEYS.CLEAN_V7, 'true')
     broadcastStateChange('ALL_RESET')
     apiResetAll().catch(() => {})
   }
@@ -379,54 +385,32 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
 
       if (remotePlayers && Array.isArray(remotePlayers)) {
         const local = storage.getPlayers()
-        if (remotePlayers.length === 0 && local.length > 0) {
-          apiSyncPlayers(local).catch(() => {})
-        } else {
-          const deduped = deduplicatePlayers(remotePlayers)
-          if (JSON.stringify(deduped) !== JSON.stringify(local)) {
-            localStorage.setItem(KEYS.PLAYERS, JSON.stringify(deduped))
-            broadcastStateChange('PLAYERS_UPDATED')
-            onSyncEvent?.('PLAYERS_UPDATED')
-          }
+        const deduped = deduplicatePlayers(remotePlayers)
+        if (JSON.stringify(deduped) !== JSON.stringify(local)) {
+          localStorage.setItem(KEYS.PLAYERS, JSON.stringify(deduped))
+          broadcastStateChange('PLAYERS_UPDATED')
+          onSyncEvent?.('PLAYERS_UPDATED')
         }
       }
 
       if (remoteChallenges && Array.isArray(remoteChallenges)) {
         const local = storage.getChallenges()
-        if (remoteChallenges.length === 0 && local.length > 0) {
-          apiSyncChallenges(local).catch(() => {})
-        } else {
-          // Merge local and remote by id so in-flight local additions are preserved
-          const map = new Map<string, Challenge>()
-          remoteChallenges.forEach((c) => map.set(c.id, c))
-          local.forEach((c) => {
-            if (!map.has(c.id)) {
-              map.set(c.id, c)
-              apiSaveChallenge(c).catch(() => {})
-            }
-          })
-          const merged = Array.from(map.values())
-          if (JSON.stringify(merged) !== JSON.stringify(local)) {
-            try {
-              localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(merged))
-            } catch {}
-            broadcastStateChange('CHALLENGES_UPDATED')
-            onSyncEvent?.('CHALLENGES_UPDATED')
-          }
+        if (JSON.stringify(remoteChallenges) !== JSON.stringify(local)) {
+          try {
+            localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(remoteChallenges))
+          } catch {}
+          broadcastStateChange('CHALLENGES_UPDATED')
+          onSyncEvent?.('CHALLENGES_UPDATED')
         }
       }
 
       if (remoteScores && Array.isArray(remoteScores)) {
         const local = storage.getScores()
-        if (remoteScores.length === 0 && local.length > 0) {
-          apiSyncScores(local).catch(() => {})
-        } else {
-          const sorted = [...remoteScores].sort((a, b) => (b.score || 0) - (a.score || 0))
-          if (JSON.stringify(sorted) !== JSON.stringify(local)) {
-            localStorage.setItem(KEYS.SCORES, JSON.stringify(sorted))
-            broadcastStateChange('SCORES_UPDATED')
-            onSyncEvent?.('SCORES_UPDATED')
-          }
+        const sorted = [...remoteScores].sort((a, b) => (b.score || 0) - (a.score || 0))
+        if (JSON.stringify(sorted) !== JSON.stringify(local)) {
+          localStorage.setItem(KEYS.SCORES, JSON.stringify(sorted))
+          broadcastStateChange('SCORES_UPDATED')
+          onSyncEvent?.('SCORES_UPDATED')
         }
       }
     } catch {

@@ -22,7 +22,9 @@ import {
   X,
   UserMinus,
   Square,
-  Share2
+  Share2,
+  KeyRound,
+  Rocket
 } from 'lucide-react'
 import { deduplicatePlayersByName } from '../../lib/storage'
 
@@ -535,6 +537,78 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Created Challenges Quick-Launch Library */}
+      {challenges.length > 0 && (
+        <div className="glass-panel" style={{ padding: '1.5rem', marginTop: '2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: 'var(--radius-sm)', background: 'rgba(0, 216, 246, 0.12)', border: '1px solid var(--neon-cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--neon-cyan)' }}>
+                <KeyRound size={16} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#fff' }}>
+                  Created Challenges ({challenges.length})
+                </h3>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Launch a live multiplayer cracking room for any created challenge with one click.
+                </span>
+              </div>
+            </div>
+            {onGoToChallenges && (
+              <button
+                className="btn-secondary"
+                style={{ padding: '0.35rem 0.85rem', fontSize: '0.78rem' }}
+                onClick={onGoToChallenges}
+              >
+                Open Workshop (Create / Edit) →
+              </button>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.85rem' }}>
+            {challenges.map((c) => (
+              <div
+                key={c.id}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '1rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  gap: '0.75rem'
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.35rem' }}>
+                    <strong style={{ color: '#fff', fontSize: '0.95rem' }}>{c.title}</strong>
+                    <span className={`badge ${c.difficulty === 'Insane' ? 'badge-crimson' : c.difficulty === 'Hard' ? 'badge-amber' : c.difficulty === 'Medium' ? 'badge-cyan' : 'badge-mint'}`} style={{ fontSize: '0.65rem' }}>
+                      {c.difficulty}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <span>{c.category}</span>
+                    <span>•</span>
+                    <span>{c.timeLimit}s</span>
+                    <span>•</span>
+                    <span>Pass: <code style={{ color: 'var(--neon-mint)' }}>{c.password}</code></span>
+                  </div>
+                </div>
+                <button
+                  className="btn-primary"
+                  style={{ width: '100%', padding: '0.45rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                  onClick={() => onCreateSession(c.id)}
+                  title={`Launch Session for ${c.title}`}
+                >
+                  <Rocket size={14} /> Launch Session
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
