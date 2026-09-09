@@ -95,7 +95,9 @@ export const PlayerLobby: React.FC<PlayerLobbyProps> = ({
 
   // If in waiting state (waiting for admin to start)
   if (currentWaitingSession && currentWaitingPlayer) {
-    const challenge = challenges.find((c) => c.id === currentWaitingSession.challengeId)
+    const challenge =
+      currentWaitingSession.challenge ||
+      challenges.find((c) => c.id === currentWaitingSession.challengeId)
     const rawSessionPlayers = players.filter(
       (p) =>
         p.sessionId === currentWaitingSession.id ||
@@ -244,7 +246,7 @@ export const PlayerLobby: React.FC<PlayerLobbyProps> = ({
               </span>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                 {joinableSessions.map((s) => {
-                  const ch = challenges.find((c) => c.id === s.challengeId)
+                  const ch = s.challenge || challenges.find((c) => c.id === s.challengeId)
                   return (
                     <button
                       key={s.id}

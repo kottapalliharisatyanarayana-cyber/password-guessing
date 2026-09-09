@@ -52,9 +52,20 @@ export function App() {
     }
   }, [])
 
-  // Player Active Session State
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
-  const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null)
+  // Player Active Session State (persisted to sessionStorage for resilient page reloads)
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
+    if (typeof sessionStorage !== 'undefined') {
+      return sessionStorage.getItem('crackvault_active_session_id')
+    }
+    return null
+  })
+  const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(() => {
+    if (typeof sessionStorage !== 'undefined') {
+      return sessionStorage.getItem('crackvault_current_player_id')
+    }
+    return null
+  })
+  const [joinedPlayer, setJoinedPlayer] = useState<GamePlayer | null>(null)
 
   // Toast Helper
   const showToast = useCallback((msg: string) => {
@@ -169,16 +180,22 @@ export function App() {
 
     setActiveSessionId(targetSession.id)
     setCurrentPlayerId(finalPlayerId)
+    setJoinedPlayer(playerRecord)
+
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('crackvault_active_session_id', targetSession.id)
+      sessionStorage.setItem('crackvault_current_player_id', finalPlayerId)
+    }
+
     showToast(`Joined session: ${targetSession.joinCode}`)
   }
 
   const handlePlayerGuessAttempt = (isCorrect: boolean, guess: string) => {
-    if (!currentPlayerId || !activeSessionId) return
+    if (!activeSessionId) return
 
-    const currentSession = sessions.find((s) => s.id === activeSessionId)
-    const currentChallenge = challenges.find((c) => c.id === currentSession?.challengeId)
-    const activePlayer = players.find((p) => p.id === currentPlayerId)
-    if (!currentSession || !currentChallenge || !activePlayer) return
+    const activeChallenge = currentChallenge || currentSession?.challenge || challenges.find((c) => c.id === currentSession?.challengeId)
+    const activePlayer = currentPlayer || players.find((p) => p.id === currentPlayerId)
+    if (!currentSession || !activeChallenge || !activePlayer) return
 
     const newAttempts = activePlayer.attempts + 1
     const hintsCount = activePlayer.revealedHints.length
@@ -188,7 +205,7 @@ export function App() {
 
       // Update Player
       const updatedPlayers = players.map((p) => {
-        if (p.id === currentPlayerId) {
+        if (p.id === activePlayer.id) {
           return { ...p, attempts: newAttempts, status: 'solved' as const, score: finalScore }
         }
         if (p.sessionId === activeSessionId || (currentSession && p.joinCode === currentSession.joinCode)) {
@@ -215,7 +232,7 @@ export function App() {
 
       // Add to Global Leaderboard
       const newScore = storage.addScore({
-        challengeTitle: currentChallenge.title,
+        challengeTitle: activeChallenge.title,
         playerName: activePlayer.name,
         score: finalScore,
         timeTaken: 0,
@@ -255,6 +272,11 @@ export function App() {
   const handleLeaveGame = () => {
     setActiveSessionId(null)
     setCurrentPlayerId(null)
+    setJoinedPlayer(null)
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem('crackvault_active_session_id')
+      sessionStorage.removeItem('crackvault_current_player_id')
+    }
     showToast('Exited session to lobby')
   }
 
@@ -483,10 +505,49 @@ export function App() {
     showToast('Room roster cleared')
   }
 
-  // Active Session & Player details
+  // Active Session & Resilient Details
   const currentSession = sessions.find((s) => s.id === activeSessionId)
-  const currentChallenge = currentSession?.challenge || challenges.find((c) => c.id === currentSession?.challengeId)
-  const currentPlayer = players.find((p) => p.id === currentPlayerId)
+
+  // Resilient Challenge Resolver: NEVER allows a missing challenge to lock a player out of the game
+  const currentChallenge: Challenge | undefined = (() => {
+    if (!currentSession) return undefined
+    if (currentSession.challenge) return currentSession.challenge
+    const ch = challenges.find((c) => c.id === currentSession.challengeId)
+    if (ch) return ch
+
+    // Auto-synthesize resilient fallback challenge so contestants are NEVER blocked
+    const fallback: Challenge = {
+      id: currentSession.challengeId || 'ch_' + currentSession.id,
+      title: 'Decryption Protocol',
+      category: 'Cyber Vault Mission',
+      password: 'VAULT',
+      hints: [
+        'Security breach detected in local subnet.',
+        'Decryption sequence initialized.',
+        'Target access key encrypted with standard cipher.',
+        'Cipher text matches algorithmic pattern.',
+        'Final protocol override ready for input.'
+      ],
+      timeLimit: currentSession.totalSeconds || 300,
+      difficulty: 'Medium',
+      isActive: true,
+      createdAt: currentSession.createdAt
+    }
+    return fallback
+  })()
+
+  // Resilient Player Resolver: checks players list or immediately joined player state
+  const currentPlayer =
+    players.find((p) => p.id === currentPlayerId) ||
+    joinedPlayer ||
+    (currentSession && currentPlayerId
+      ? players.find(
+          (p) =>
+            p.sessionId === currentSession.id ||
+            (p.joinCode && p.joinCode.toUpperCase() === currentSession.joinCode.toUpperCase())
+        )
+      : undefined)
+
   const rawSessionPlayers = players.filter(
     (p) =>
       p.sessionId === activeSessionId ||
@@ -517,12 +578,12 @@ export function App() {
       {/* Main Content Area */}
       <main className="main-wrapper">
         {currentMode === 'player' ? (
-          activeSessionId && currentSession && currentChallenge && currentPlayer ? (
+          activeSessionId && currentSession && currentPlayer ? (
             currentSession.status === 'lobby' ? (
               <PlayerLobby
                 sessions={sessions}
                 challenges={challenges}
-                players={players}
+                players={currentSessionPlayers}
                 onJoinSession={handleJoinSession}
                 currentWaitingSession={currentSession}
                 currentWaitingPlayer={currentPlayer}
@@ -531,7 +592,7 @@ export function App() {
             ) : (
               <PlayerArena
                 session={currentSession}
-                challenge={currentChallenge}
+                challenge={currentChallenge!}
                 player={currentPlayer}
                 players={currentSessionPlayers}
                 onGuessAttempt={handlePlayerGuessAttempt}
