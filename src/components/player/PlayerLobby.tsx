@@ -36,35 +36,9 @@ export const PlayerLobby: React.FC<PlayerLobbyProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [isSearching, setIsSearching] = useState(false)
 
-  // Request fresh sessions from backend when opening lobby
-  useEffect(() => {
-    apiGetSessions()
-      .then((remote) => {
-        if (remote && Array.isArray(remote)) {
-          const current = storage.getSessions()
-          const map = new Map<string, GameSession>()
-          current.forEach((s) => map.set(s.id, s))
-          remote.forEach((s) => map.set(s.id, s))
-          storage.saveSessions(Array.from(map.values()))
-        }
-      })
-      .catch(() => {})
-  }, [])
-
   useEffect(() => {
     if (initialCode) {
-      const clean = initialCode.toUpperCase()
-      setCode(clean)
-      apiGetSessionByCode(clean)
-        .then((s) => {
-          if (s) {
-            const current = storage.getSessions()
-            if (!current.some((c) => c.id === s.id)) {
-              storage.saveSessions([...current, s])
-            }
-          }
-        })
-        .catch(() => {})
+      setCode(initialCode.toUpperCase())
     }
   }, [initialCode])
 
@@ -91,44 +65,20 @@ export const PlayerLobby: React.FC<PlayerLobbyProps> = ({
 
       apiGetSessionByCode(cleanCode)
         .then((remoteSession) => {
-          if (remoteSession) {
-            const current = storage.getSessions()
-            if (!current.some((s) => s.id === remoteSession.id)) {
-              storage.saveSessions([...current, remoteSession])
-            }
+          setIsSearching(false)
+          if (remoteSession && remoteSession.status !== 'ended') {
             sound.playClick()
             setErrorMsg(null)
-            setIsSearching(false)
             onJoinSession(cleanCode, cleanName, selectedAvatar)
-            return
+          } else {
+            setErrorMsg(`No active room found with PIN "${cleanCode}". Ask your host for the room code.`)
+            sound.playError()
           }
-
-          setTimeout(() => {
-            setIsSearching(false)
-            const recheck = storage.getSessions().find((s) => s.joinCode.toUpperCase() === cleanCode)
-            if (recheck) {
-              sound.playClick()
-              setErrorMsg(null)
-              onJoinSession(cleanCode, cleanName, selectedAvatar)
-            } else {
-              setErrorMsg(`No active room found with PIN "${cleanCode}". Make sure the host has created the room.`)
-              sound.playError()
-            }
-          }, 400)
         })
         .catch(() => {
-          setTimeout(() => {
-            setIsSearching(false)
-            const recheck = storage.getSessions().find((s) => s.joinCode.toUpperCase() === cleanCode)
-            if (recheck) {
-              sound.playClick()
-              setErrorMsg(null)
-              onJoinSession(cleanCode, cleanName, selectedAvatar)
-            } else {
-              setErrorMsg(`No active room found with PIN "${cleanCode}". Make sure the host has created the room.`)
-              sound.playError()
-            }
-          }, 400)
+          setIsSearching(false)
+          setErrorMsg(`No active room found with PIN "${cleanCode}". Ask your host for the room code.`)
+          sound.playError()
         })
       return
     }

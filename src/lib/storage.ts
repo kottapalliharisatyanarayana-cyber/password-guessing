@@ -33,7 +33,7 @@ const KEYS = {
   PLAYERS: 'crackvault_players',
   SCORES: 'crackvault_scores',
   SETTINGS: 'crackvault_settings',
-  CLEAN_V4: 'crackvault_clean_v4'
+  CLEAN_V5: 'crackvault_clean_v5'
 }
 
 // Default Seed Challenges: Clean slate (0 challenges)
@@ -95,19 +95,13 @@ export function subscribeStateChange(callback: (action: string, payload: unknown
   return () => channel.removeEventListener('message', listener)
 }
 
-// One-time cleanup for fresh clean state
+// One-time cleanup for fresh clean state (clears old lingering zombie sessions)
 function ensureCleanState() {
   if (typeof localStorage === 'undefined') return
-  if (localStorage.getItem(KEYS.CLEAN_V4) !== 'true') {
-    localStorage.removeItem(KEYS.CHALLENGES)
+  if (localStorage.getItem(KEYS.CLEAN_V5) !== 'true') {
     localStorage.removeItem(KEYS.SESSIONS)
-    localStorage.removeItem(KEYS.PLAYERS)
-    localStorage.removeItem(KEYS.SCORES)
-    localStorage.setItem(KEYS.CHALLENGES, JSON.stringify([]))
     localStorage.setItem(KEYS.SESSIONS, JSON.stringify([]))
-    localStorage.setItem(KEYS.PLAYERS, JSON.stringify([]))
-    localStorage.setItem(KEYS.SCORES, JSON.stringify([]))
-    localStorage.setItem(KEYS.CLEAN_V4, 'true')
+    localStorage.setItem(KEYS.CLEAN_V5, 'true')
   }
 }
 ensureCleanState()
@@ -355,7 +349,7 @@ export const storage = {
     localStorage.setItem(KEYS.SCORES, JSON.stringify([]))
     localStorage.setItem(KEYS.SESSIONS, JSON.stringify([]))
     localStorage.setItem(KEYS.PLAYERS, JSON.stringify([]))
-    localStorage.setItem(KEYS.CLEAN_V4, 'true')
+    localStorage.setItem(KEYS.CLEAN_V5, 'true')
     broadcastStateChange('ALL_RESET')
     if (!isIncomingCloudUpdate) {
       cloudSaveChallenges([])
@@ -458,14 +452,13 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
 
       if (remoteSessions && Array.isArray(remoteSessions)) {
         const local = storage.getSessions()
-        if (remoteSessions.length === 0 && local.length > 0) {
-          apiSyncSessions(local).catch(() => {})
-        } else {
-          if (JSON.stringify(remoteSessions) !== JSON.stringify(local)) {
+        // NEVER auto-create or auto-push sessions to MongoDB. If remote is empty, local becomes empty.
+        if (JSON.stringify(remoteSessions) !== JSON.stringify(local)) {
+          try {
             localStorage.setItem(KEYS.SESSIONS, JSON.stringify(remoteSessions))
-            broadcastStateChange('SESSIONS_UPDATED')
-            onSyncEvent?.('SESSIONS_UPDATED')
-          }
+          } catch {}
+          broadcastStateChange('SESSIONS_UPDATED')
+          onSyncEvent?.('SESSIONS_UPDATED')
         }
       }
 
