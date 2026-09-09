@@ -6,7 +6,8 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.x-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.x-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-[![Supabase](https://img.shields.io/badge/Supabase-Realtime-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
+[![Express](https://img.shields.io/badge/Express-5.x-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com/)
+[![MongoDB Atlas](https://img.shields.io/badge/MongoDB_Atlas-Cloud-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com/atlas)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 ---
@@ -46,7 +47,7 @@ Administrators construct custom cyber puzzles equipped with secret passphrases, 
 
 ### 🎮 Player Arena
 - **Zero-Friction Entry:** Join instantly with a 6-character alphanumeric room PIN or by scanning a generated QR code. No user sign-up required.
-- **Synchronized Multiplayer Lobby:** Real-time lobby reflecting joined contestants, waiting states, and game commencement synced via Supabase Realtime.
+- **Synchronized Multiplayer Lobby:** Real-time lobby reflecting joined contestants, waiting states, and game commencement synced via Express & MongoDB Atlas.
 - **High-Stakes Vault Interface:** Cyber-themed terminal HUD displaying password attempt logs, remaining time, and instant validation feedback.
 - **Strategic Escalating Clues (Text or Image):** Every hint (Hints 1 to 5 + Visual Clue) can be configured as **text** or **image**. When unlocked, image hints feature full-resolution Lightbox zoom inspection so contestants can examine visual details without restriction.
 - **Urgency-Aware Timer:** Color-coded countdown timer (Green $\to$ Amber $\to$ Pulsing Crimson) ticking down in real time without unexpected clue penalty jumps.
@@ -149,7 +150,8 @@ sequenceDiagram
 | **Icons** | [Lucide React](https://lucide.dev/) | Clean, consistent icons for UI states and actions |
 | **Utilities** | [qrcode.react](https://www.npmjs.com/package/qrcode.react) | Client-side dynamic QR code generation for room codes |
 | **FX** | [canvas-confetti](https://www.npmjs.com/package/canvas-confetti) | Visual particle celebration for triumphant vault solvers |
-| **Database & Realtime** | [Supabase](https://supabase.com/) | Managed PostgreSQL with WebSockets for real-time multiplayer states |
+| **Backend Server** | [Express](https://expressjs.com/) | RESTful API routes with serverless deployment support |
+| **Database** | [MongoDB Atlas](https://www.mongodb.com/atlas) | Cloud document database with Mongoose schemas |
 
 ---
 
@@ -250,105 +252,13 @@ The platform relies on 5 primary tables in PostgreSQL with Row Level Security (R
 Create a `.env` file in the root directory:
 
 ```env
-VITE_SUPABASE_URL=https://your-project-ref.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
+PORT=5000
+MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.18sjvym.mongodb.net/crackvault?retryWrites=true&w=majority
 ```
-
-> You can find these credentials inside your Supabase project under **Project Settings $\to$ API**.
 
 ---
 
-### Database Setup & Migrations
-
-Execute the following SQL commands in your Supabase **SQL Editor** to create the tables, indexes, and RLS policies:
-
-```sql
--- 1. Challenges Table
-create table public.challenges (
-  id uuid primary key default gen_random_uuid(),
-  title text not null,
-  password text not null,
-  hint_1 text,
-  hint_2 text,
-  hint_3 text,
-  hint_4 text,
-  hint_5 text,
-  image_url text,
-  is_image_clue boolean default false,
-  time_limit integer default 300,
-  difficulty text check (difficulty in ('Easy', 'Medium', 'Hard', 'Insane')) default 'Medium',
-  is_active boolean default true,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
--- 2. Game Sessions Table
-create table public.game_sessions (
-  id uuid primary key default gen_random_uuid(),
-  challenge_id uuid references public.challenges(id) on delete cascade,
-  join_code text unique not null,
-  status text check (status in ('lobby', 'playing', 'ended')) default 'lobby',
-  started_at timestamp with time zone,
-  ended_at timestamp with time zone,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
--- 3. Game Players Table
-create table public.game_players (
-  id uuid primary key default gen_random_uuid(),
-  session_id uuid references public.game_sessions(id) on delete cascade,
-  player_name text not null,
-  status text check (status in ('waiting', 'playing', 'solved', 'failed')) default 'waiting',
-  attempts integer default 0,
-  hints_used integer default 0,
-  solve_time numeric,
-  score integer default 0,
-  joined_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
--- 4. Global Scores Table
-create table public.scores (
-  id uuid primary key default gen_random_uuid(),
-  challenge_id uuid references public.challenges(id) on delete set null,
-  player_name text not null,
-  score integer not null,
-  time_taken numeric not null,
-  attempts integer not null,
-  hints_revealed integer not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
--- 5. Settings Table
-create table public.settings (
-  key text primary key,
-  value text not null,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
--- Insert Default Admin Password and Default Time Limit
-insert into public.settings (key, value)
-values 
-  ('admin_password', 'admin123'),
-  ('default_time_limit', '300')
-on conflict (key) do nothing;
-
--- Enable Row Level Security (RLS)
-alter table public.challenges enable row level security;
-alter table public.game_sessions enable row level security;
-alter table public.game_players enable row level security;
-alter table public.scores enable row level security;
-alter table public.settings enable row level security;
-
--- Anonymous access policies for frictionless single-tenant events
-create policy "Allow all operations for anon on challenges" on public.challenges for all using (true) with check (true);
-create policy "Allow all operations for anon on game_sessions" on public.game_sessions for all using (true) with check (true);
-create policy "Allow all operations for anon on game_players" on public.game_players for all using (true) with check (true);
-create policy "Allow all operations for anon on scores" on public.scores for all using (true) with check (true);
-create policy "Allow all operations for anon on settings" on public.settings for all using (true) with check (true);
-
--- Enable Realtime Replication
-alter publication supabase_realtime add table public.game_sessions;
-alter publication supabase_realtime add table public.game_players;
-```
+MongoDB Atlas collections (`challenges`, `sessions`, `players`, `scores`, `settings`) are created automatically on first connection.
 
 ---
 
@@ -368,9 +278,8 @@ The app will start at `http://localhost:5173`.
 
 ## 🔒 Security & Architecture Notes
 
-- **Default Admin Login:** Username `admin` / Password `admin123`. Navigate to **Admin Command $\to$ Settings** to update these credentials. Includes one-click auto-fill for testing.
-- **Client Verification & Anti-Cheat:** Password verification can be executed via client-side hashing or Supabase Edge Functions / Postgres RPC functions to prevent secret password leakage in network inspector tabs during competitive hackathons.
-- **Realtime Channels:** Ensure your Supabase project has Realtime enabled under **Database $\to$ Publications** for `game_sessions` and `game_players` so status changes immediately propagate to all connected clients without polling.
+- **Default Admin Login:** Username `admin` / Password `admin123`. Navigate to **Admin Command $\to$ Settings** to update these credentials, or click **Create Admin** right from the login screen to set custom credentials directly into MongoDB Atlas.
+- **Client Verification & Anti-Cheat:** Password verification and game session orchestration are handled server-side via Express and MongoDB Atlas.
 
 ---
 

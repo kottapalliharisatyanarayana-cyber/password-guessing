@@ -212,6 +212,13 @@ export async function apiSaveSettings(settings: AppSettings): Promise<AppSetting
   })
 }
 
+export async function apiCreateAdmin(username: string, password: string): Promise<AppSettings | null> {
+  return request<AppSettings>('/settings/create-admin', {
+    method: 'POST',
+    body: JSON.stringify({ adminUsername: username, adminPassword: password })
+  })
+}
+
 // Global System Reset
 export async function apiResetAll(): Promise<boolean> {
   const res = await request<{ success: boolean }>('/reset-all', {

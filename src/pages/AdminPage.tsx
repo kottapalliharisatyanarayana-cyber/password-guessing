@@ -165,6 +165,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
             onCancel={onNavigateToPlayer}
             adminUsername={settings.adminUsername || 'admin'}
             adminPasswordHash={settings.adminPassword || 'admin123'}
+            onUpdateSettings={onUpdateSettings}
           />
         ) : (
           <AdminDashboard

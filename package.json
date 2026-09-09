@@ -15,7 +15,6 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "firebase": "^12.18.0",
     "lucide-react": "^1.16.0",
     "mongoose": "^9.9.5",
     "qrcode": "^1.5.4",

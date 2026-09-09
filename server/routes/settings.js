@@ -37,11 +37,38 @@ router.post('/', async (req, res) => {
     const settings = await Settings.findOneAndUpdate(
       { id: 'global_settings' },
       { $set: memorySettings },
-      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+      { new: true, upsert: true, setDefaultsOnInsert: true }
     )
-    return res.json(settings)
+    return res.json(settings || memorySettings)
   } catch (err) {
     console.warn('⚠️ [Settings API] MongoDB save error, served from memory:', err.message)
+    return res.json(memorySettings)
+  }
+})
+
+// POST /api/settings/create-admin - explicitly create or reset admin credentials
+router.post('/create-admin', async (req, res) => {
+  const { adminUsername, adminPassword } = req.body || {}
+  const username = (adminUsername || 'admin').trim()
+  const password = (adminPassword || 'admin123').trim()
+
+  memorySettings = {
+    ...memorySettings,
+    adminUsername: username,
+    adminPassword: password,
+    id: 'global_settings'
+  }
+
+  try {
+    const settings = await Settings.findOneAndUpdate(
+      { id: 'global_settings' },
+      { $set: { adminUsername: username, adminPassword: password } },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    )
+    console.log(`🔑 [Settings API] Admin created/updated in MongoDB Atlas: "${username}"`)
+    return res.json(settings || memorySettings)
+  } catch (err) {
+    console.warn('⚠️ [Settings API] Error creating admin in MongoDB:', err.message)
     return res.json(memorySettings)
   }
 })

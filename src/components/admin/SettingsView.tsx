@@ -1,14 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { AppSettings } from '../../types'
 import { sound } from '../../lib/sound'
-import {
-  getFirebaseConfig,
-  saveFirebaseConfig,
-  clearFirebaseConfig,
-  isFirebaseConnected,
-  FirebaseConfig
-} from '../../lib/firebase'
-import { apiCheckHealth } from '../../lib/api'
+import { apiCheckHealth, apiCreateAdmin } from '../../lib/api'
 import {
   Settings,
   Lock,
@@ -60,13 +53,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     database: 'crackvault'
   })
 
-  // Firebase Realtime State
-  const [firebaseConnected, setFirebaseConnected] = useState(isFirebaseConnected())
-  const [databaseUrl, setDatabaseUrl] = useState('')
-  const [apiKey, setApiKey] = useState('')
-  const [projectId, setProjectId] = useState('')
-  const [rawSnippet, setRawSnippet] = useState('')
-  const [cloudMessage, setCloudMessage] = useState<string | null>(null)
+
 
   const checkMongoHealth = async () => {
     setMongoStatus((prev) => ({ ...prev, checking: true }))
@@ -98,13 +85,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   }
 
   useEffect(() => {
-    const existing = getFirebaseConfig()
-    if (existing) {
-      setDatabaseUrl(existing.databaseURL || '')
-      setApiKey(existing.apiKey || '')
-      setProjectId(existing.projectId || '')
-    }
-    setFirebaseConnected(isFirebaseConnected())
     checkMongoHealth()
   }, [])
 
@@ -155,60 +135,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     onNotify('Settings saved successfully')
   }
 
-  const handleParseSnippet = () => {
-    if (!rawSnippet.trim()) return
-    try {
-      const keyMatch = rawSnippet.match(/apiKey:\s*["']([^"']+)["']/)
-      const dbMatch = rawSnippet.match(/databaseURL:\s*["']([^"']+)["']/)
-      const projMatch = rawSnippet.match(/projectId:\s*["']([^"']+)["']/)
 
-      if (keyMatch && keyMatch[1]) setApiKey(keyMatch[1])
-      if (dbMatch && dbMatch[1]) setDatabaseUrl(dbMatch[1])
-      if (projMatch && projMatch[1]) setProjectId(projMatch[1])
-
-      setCloudMessage('Config parsed from snippet! Click "Save & Connect Cloud" below.')
-    } catch {
-      setCloudMessage('Could not automatically parse snippet. Please copy fields manually.')
-    }
-  }
-
-  const handleSaveFirebase = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!databaseUrl.trim() || !apiKey.trim()) {
-      setCloudMessage('Please provide both Database URL and API Key.')
-      return
-    }
-
-    const cfg: FirebaseConfig = {
-      apiKey: apiKey.trim(),
-      databaseURL: databaseUrl.trim().replace(/\/$/, ''),
-      projectId: projectId.trim(),
-      authDomain: `${projectId.trim()}.firebaseapp.com`
-    }
-
-    saveFirebaseConfig(cfg)
-    const connected = isFirebaseConnected()
-    setFirebaseConnected(connected)
-    sound.playClick()
-    if (connected) {
-      setCloudMessage('⚡ Firebase Connected! All phones, laptops, and devices can now join live rooms in real time.')
-      onNotify('Cloud Sync Connected')
-    } else {
-      setCloudMessage('Configuration saved, but could not connect. Check the Database URL format.')
-    }
-  }
-
-  const handleClearFirebase = () => {
-    clearFirebaseConfig()
-    setDatabaseUrl('')
-    setApiKey('')
-    setProjectId('')
-    setRawSnippet('')
-    setFirebaseConnected(false)
-    setCloudMessage('Firebase configuration removed.')
-    sound.playClick()
-    onNotify('Cloud sync disconnected')
-  }
 
   const handleFactoryReset = () => {
     if (confirm('CAUTION: This will reset all challenges, scores, and sessions back to factory defaults. Continue?')) {
@@ -218,7 +145,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   }
 
-  const anyCloudLive = mongoStatus.connected || firebaseConnected
+
 
   return (
     <div style={{ maxWidth: '820px' }}>
@@ -393,110 +320,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        {/* SECONDARY: Firebase Cloud Sync */}
-        <div className="glass-panel" style={{ padding: '1.5rem', opacity: mongoStatus.connected ? 0.75 : 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
-              <Cloud size={18} style={{ color: firebaseConnected ? 'var(--neon-mint)' : 'var(--neon-cyan)' }} />
-              Alternative: Firebase Realtime Database
-            </h3>
-            <span
-              className={`badge ${firebaseConnected ? 'badge-mint' : ''}`}
-              style={{
-                fontSize: '0.68rem',
-                background: firebaseConnected ? undefined : 'rgba(255,255,255,0.06)',
-                color: firebaseConnected ? undefined : 'var(--text-muted)'
-              }}
-            >
-              {firebaseConnected ? '🟢 FIREBASE ACTIVE' : '⚪ INACTIVE'}
-            </span>
-          </div>
 
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-            Optional fallback: If you prefer Google Firebase over MongoDB Atlas, you can paste your Firebase credentials here.
-          </p>
-
-          {cloudMessage && (
-            <div
-              style={{
-                padding: '0.6rem 0.85rem',
-                background: 'rgba(0,210,255,0.12)',
-                border: '1px solid var(--neon-cyan)',
-                color: '#fff',
-                borderRadius: 'var(--radius-md)',
-                fontSize: '0.78rem',
-                marginBottom: '1rem'
-              }}
-            >
-              {cloudMessage}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-            <input
-              type="text"
-              className="input-field"
-              value={rawSnippet}
-              onChange={(e) => setRawSnippet(e.target.value)}
-              placeholder='paste firebaseConfig = { apiKey: "...", databaseURL: "..." }'
-              style={{ fontSize: '0.75rem', fontFamily: 'monospace' }}
-            />
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={handleParseSnippet}
-              style={{ whiteSpace: 'nowrap', fontSize: '0.75rem' }}
-            >
-              Auto-Fill
-            </button>
-          </div>
-
-          <form onSubmit={handleSaveFirebase}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-              <div>
-                <input
-                  type="text"
-                  className="input-field"
-                  value={databaseUrl}
-                  onChange={(e) => setDatabaseUrl(e.target.value)}
-                  placeholder="Database URL"
-                  style={{ fontSize: '0.75rem' }}
-                />
-              </div>
-              <div>
-                <input
-                  type="text"
-                  className="input-field"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="API Key"
-                  style={{ fontSize: '0.75rem' }}
-                />
-              </div>
-              <div>
-                <input
-                  type="text"
-                  className="input-field"
-                  value={projectId}
-                  onChange={(e) => setProjectId(e.target.value)}
-                  placeholder="Project ID"
-                  style={{ fontSize: '0.75rem' }}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button type="submit" className="btn-secondary" style={{ fontSize: '0.75rem', padding: '0.5rem 1rem' }}>
-                Save Firebase
-              </button>
-              {firebaseConnected && (
-                <button type="button" className="btn-secondary" onClick={handleClearFirebase} style={{ fontSize: '0.75rem', padding: '0.5rem 0.75rem' }}>
-                  Disconnect
-                </button>
-              )}
-            </div>
-          </form>
-        </div>
 
         {/* Administrator Credentials Card */}
         <div className="glass-panel" style={{ padding: '1.75rem' }}>
