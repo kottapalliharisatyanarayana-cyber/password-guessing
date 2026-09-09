@@ -88,7 +88,7 @@ export const TerminalInput: React.FC<TerminalInputProps> = ({
               className="input-field"
               value={inputVal}
               onChange={(e) => setInputVal(e.target.value)}
-              placeholder={disabled ? 'Verification locked' : 'Enter target password...'}
+              placeholder={disabled ? 'Mission paused by admin... awaiting signal' : 'Enter target password...'}
               disabled={disabled}
               autoComplete="off"
               spellCheck="false"

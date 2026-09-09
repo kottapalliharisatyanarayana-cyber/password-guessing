@@ -27,7 +27,7 @@ export interface Challenge {
   createdAt: string
 }
 
-export type SessionStatus = 'lobby' | 'playing' | 'ended'
+export type SessionStatus = 'lobby' | 'playing' | 'paused' | 'ended'
 
 export interface GameSession {
   id: string

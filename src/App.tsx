@@ -332,11 +332,11 @@ export function App() {
 
   const handlePauseSession = (sessionId: string) => {
     const updated = sessions.map((s) =>
-      s.id === sessionId ? { ...s, status: 'lobby' as const } : s
+      s.id === sessionId ? { ...s, status: 'paused' as const } : s
     )
     setSessions(updated)
     storage.saveSessions(updated)
-    showToast('Session paused')
+    showToast('Mission broadcast paused — all contestant clocks frozen')
   }
 
   const handleResumeSession = (sessionId: string) => {
@@ -345,7 +345,7 @@ export function App() {
     )
     setSessions(updated)
     storage.saveSessions(updated)
-    showToast('Session resumed')
+    showToast('Mission broadcast resumed!')
   }
 
   const handleResetSession = (sessionId: string) => {
@@ -367,15 +367,15 @@ export function App() {
     setSessions(updated)
     storage.saveSessions(updated)
 
-    // Reset players for this session
-    const updatedPlayers = players.filter(
-      (p) =>
-        p.sessionId !== sessionId &&
-        (!p.joinCode || p.joinCode.toUpperCase() !== sTarget.joinCode.toUpperCase())
+    // Reset player status back to waiting so contestants return to waiting lobby
+    const updatedPlayers = players.map((p) =>
+      p.sessionId === sessionId || (p.joinCode && sTarget.joinCode && p.joinCode.toUpperCase() === sTarget.joinCode.toUpperCase())
+        ? { ...p, status: 'waiting' as const, attempts: 0, hintsUsed: 0, revealedHints: [], score: undefined }
+        : p
     )
     setPlayers(updatedPlayers)
     storage.savePlayers(updatedPlayers)
-    showToast('Session re-opened in lobby mode')
+    showToast('Broadcast stopped — contestants returned to waiting lobby')
   }
 
   const handleForceRevealNextHint = (sessionId: string) => {

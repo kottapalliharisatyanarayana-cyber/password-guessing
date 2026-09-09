@@ -6,7 +6,7 @@ import { LiveRoster } from './LiveRoster'
 import { VictoryModal } from './VictoryModal'
 import { calculateScore } from '../../lib/storage'
 import { sound } from '../../lib/sound'
-import { Shield, Clock, Award, Key, LogOut, Flame } from 'lucide-react'
+import { Shield, Clock, Award, Key, LogOut, Flame, Pause } from 'lucide-react'
 
 interface PlayerArenaProps {
   session: GameSession
@@ -174,10 +174,15 @@ export const PlayerArena: React.FC<PlayerArenaProps> = ({
   // Score Calculation: purely based on base score and guess accuracy (no time penalty)
   const currentScore = calculateScore(0, attempts.length, revealedHints)
 
+  // Paused status
+  const isPaused = session.status === 'paused'
+
   // Timer Color logic
   const timerRatio = secondsRemaining / session.totalSeconds
   let timerClass = 'timer-green'
-  if (timerRatio < 0.2 || secondsRemaining <= 30) {
+  if (isPaused) {
+    timerClass = 'timer-amber'
+  } else if (timerRatio < 0.2 || secondsRemaining <= 30) {
     timerClass = 'timer-crimson'
   } else if (timerRatio < 0.5) {
     timerClass = 'timer-amber'
@@ -227,6 +232,53 @@ export const PlayerArena: React.FC<PlayerArenaProps> = ({
         </div>
       </div>
 
+      {/* Broadcast Paused Alert Banner */}
+      {isPaused && (
+        <div
+          style={{
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, rgba(245, 158, 11, 0.06) 100%)',
+            border: '1px solid var(--neon-amber)',
+            borderRadius: 'var(--radius-md)',
+            padding: '1rem 1.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '0.85rem',
+            boxShadow: '0 0 24px rgba(245, 158, 11, 0.25)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+            <div
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                background: 'rgba(245, 158, 11, 0.25)',
+                border: '1px solid var(--neon-amber)',
+                color: 'var(--neon-amber)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Pause size={18} />
+            </div>
+            <div>
+              <strong style={{ color: '#fff', fontSize: '1.05rem', display: 'block' }}>
+                MISSION BROADCAST PAUSED BY MISSION CONTROL
+              </strong>
+              <span style={{ fontSize: '0.82rem', color: 'var(--neon-amber)' }}>
+                Mission timer frozen at {formatTime(secondsRemaining)} • Waiting for admin signal to resume...
+              </span>
+            </div>
+          </div>
+          <span className="badge badge-amber" style={{ padding: '0.35rem 0.75rem', fontSize: '0.72rem' }}>
+            AWAITING HOST RESUME
+          </span>
+        </div>
+      )}
+
       {/* Main Play Area Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 1fr', gap: '1.5rem', alignItems: 'start' }}>
         {/* Left Column: Timer, Hints, and Terminal */}
@@ -244,8 +296,8 @@ export const PlayerArena: React.FC<PlayerArenaProps> = ({
                 style={{
                   height: '100%',
                   width: `${Math.max(0, Math.min(100, (secondsRemaining / session.totalSeconds) * 100))}%`,
-                  background: timerRatio < 0.2 ? 'var(--neon-crimson)' : timerRatio < 0.5 ? 'var(--neon-amber)' : 'var(--neon-mint)',
-                  boxShadow: timerRatio < 0.2 ? 'var(--shadow-crimson)' : 'var(--shadow-glow)',
+                  background: isPaused ? 'var(--neon-amber)' : timerRatio < 0.2 ? 'var(--neon-crimson)' : timerRatio < 0.5 ? 'var(--neon-amber)' : 'var(--neon-mint)',
+                  boxShadow: isPaused ? '0 0 12px rgba(245, 158, 11, 0.4)' : timerRatio < 0.2 ? 'var(--shadow-crimson)' : 'var(--shadow-glow)',
                   transition: 'width 0.4s ease'
                 }}
               />
@@ -260,14 +312,14 @@ export const PlayerArena: React.FC<PlayerArenaProps> = ({
             secondsRemaining={secondsRemaining}
             totalSeconds={session.totalSeconds}
             onRevealHint={handleReveal}
-            disabled={isWon || isLost}
+            disabled={isWon || isLost || isPaused}
           />
 
           {/* Answer Verification Input */}
           <TerminalInput
             onGuess={handleGuess}
             attempts={attempts}
-            disabled={isWon || isLost}
+            disabled={isWon || isLost || isPaused}
           />
         </div>
 

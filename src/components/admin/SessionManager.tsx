@@ -20,7 +20,8 @@ import {
   Download,
   Check,
   X,
-  UserMinus
+  UserMinus,
+  Square
 } from 'lucide-react'
 import { deduplicatePlayersByName } from '../../lib/storage'
 
@@ -217,10 +218,11 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
                     <span
-                      className={`badge ${sess.status === 'playing' ? 'badge-mint' : sess.status === 'lobby' ? 'badge-amber' : 'badge-crimson'}`}
+                      className={`badge ${sess.status === 'playing' ? 'badge-mint' : sess.status === 'paused' ? 'badge-amber' : sess.status === 'lobby' ? 'badge-cyan' : 'badge-crimson'}`}
                       style={{ padding: '0.35rem 0.75rem' }}
                     >
                       {sess.status === 'playing' && <span className="pulse-dot" style={{ width: '6px', height: '6px' }} />}
+                      {sess.status === 'paused' && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--neon-amber)', display: 'inline-block', marginRight: '5px' }} />}
                       {sess.status.toUpperCase()}
                     </span>
                     <div>
@@ -321,9 +323,51 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
                       </button>
                     )}
                     {sess.status === 'playing' && (
-                      <button className="btn-secondary" onClick={() => onPauseSession(sess.id)}>
-                        <Pause size={15} /> Pause
-                      </button>
+                      <>
+                        <button
+                          className="btn-secondary"
+                          onClick={() => onPauseSession(sess.id)}
+                          style={{ color: 'var(--neon-amber)', borderColor: 'rgba(245, 158, 11, 0.4)' }}
+                          title="Pause mission broadcast and freeze all contestant timers"
+                        >
+                          <Pause size={15} /> Pause Broadcast
+                        </button>
+                        <button
+                          className="btn-secondary"
+                          onClick={() => {
+                            if (confirm(`Stop mission for room PIN "${sess.joinCode}" and return all contestants to waiting lobby?`)) {
+                              onResetSession(sess.id)
+                            }
+                          }}
+                          style={{ color: 'var(--neon-crimson)', borderColor: 'rgba(255, 51, 102, 0.3)' }}
+                          title="Stop broadcast and reset room to waiting lobby"
+                        >
+                          <Square size={14} /> Stop Broadcast
+                        </button>
+                      </>
+                    )}
+                    {sess.status === 'paused' && (
+                      <>
+                        <button
+                          className="btn-primary"
+                          onClick={() => onResumeSession(sess.id)}
+                          title="Resume mission countdown and re-enable contestants"
+                        >
+                          <Play size={15} /> Resume Broadcast
+                        </button>
+                        <button
+                          className="btn-secondary"
+                          onClick={() => {
+                            if (confirm(`Stop mission for room PIN "${sess.joinCode}" and return all contestants to waiting lobby?`)) {
+                              onResetSession(sess.id)
+                            }
+                          }}
+                          style={{ color: 'var(--neon-crimson)', borderColor: 'rgba(255, 51, 102, 0.3)' }}
+                          title="Stop broadcast and reset room to waiting lobby"
+                        >
+                          <Square size={14} /> Stop Broadcast
+                        </button>
+                      </>
                     )}
                     {sess.status === 'ended' && (
                       <button className="btn-secondary" onClick={() => onResetSession(sess.id)}>
