@@ -175,6 +175,12 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
             const sessionPlayers = deduplicatePlayersByName(rawSessionPlayers).sort((a, b) => {
               if (a.status === 'solved' && b.status !== 'solved') return -1
               if (b.status === 'solved' && a.status !== 'solved') return 1
+              if (a.status === 'solved' && b.status === 'solved') {
+                const timeA = a.solveTime !== undefined ? a.solveTime : 99999
+                const timeB = b.solveTime !== undefined ? b.solveTime : 99999
+                if (timeA !== timeB) return timeA - timeB
+                return (b.score || 0) - (a.score || 0)
+              }
               if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0)
               return a.name.localeCompare(b.name)
             })
@@ -475,6 +481,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
                           <tr style={{ background: 'rgba(255,255,255,0.03)', color: 'var(--text-muted)', textAlign: 'left', borderBottom: '1px solid var(--border-subtle)' }}>
                             <th style={{ padding: '0.65rem 1rem' }}>Contestant</th>
                             <th style={{ padding: '0.65rem 1rem' }}>Status</th>
+                            <th style={{ padding: '0.65rem 1rem' }}>Solve Time</th>
                             <th style={{ padding: '0.65rem 1rem' }}>Attempts</th>
                             <th style={{ padding: '0.65rem 1rem' }}>Hints Used</th>
                             <th style={{ padding: '0.65rem 1rem' }}>Score</th>
@@ -491,6 +498,9 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
                                 <span className={`badge ${p.status === 'solved' ? 'badge-mint' : p.status === 'failed' ? 'badge-crimson' : 'badge-cyan'}`} style={{ fontSize: '0.65rem' }}>
                                   {p.status.toUpperCase()}
                                 </span>
+                              </td>
+                              <td style={{ padding: '0.65rem 1rem', fontFamily: 'var(--font-mono)', fontWeight: 600, color: p.solveTime !== undefined ? 'var(--neon-amber)' : 'var(--text-muted)' }}>
+                                {p.solveTime !== undefined ? `⚡ ${p.solveTime}s` : '—'}
                               </td>
                               <td style={{ padding: '0.65rem 1rem', fontFamily: 'var(--font-mono)' }}>{p.attempts}</td>
                               <td style={{ padding: '0.65rem 1rem', fontFamily: 'var(--font-mono)' }}>{p.hintsUsed}</td>

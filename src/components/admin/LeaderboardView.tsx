@@ -16,7 +16,12 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 }) => {
   const [search, setSearch] = useState('')
 
-  const sorted = [...scores].sort((a, b) => b.score - a.score)
+  const sorted = [...scores].sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score
+    const timeA = a.timeTaken !== undefined && a.timeTaken > 0 ? a.timeTaken : 99999
+    const timeB = b.timeTaken !== undefined && b.timeTaken > 0 ? b.timeTaken : 99999
+    return timeA - timeB
+  })
   const filtered = sorted.filter(
     (s) =>
       s.playerName.toLowerCase().includes(search.toLowerCase()) ||

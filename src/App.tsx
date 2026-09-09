@@ -196,7 +196,7 @@ export function App() {
     showToast(`Joined session: ${targetSession.joinCode}`)
   }
 
-  const handlePlayerGuessAttempt = (isCorrect: boolean, guess: string) => {
+  const handlePlayerGuessAttempt = (isCorrect: boolean, guess: string, solveSeconds?: number) => {
     if (!activeSessionId) return
 
     const activeChallenge = currentChallenge || currentSession?.challenge || challenges.find((c) => c.id === currentSession?.challengeId)
@@ -207,12 +207,15 @@ export function App() {
     const hintsCount = activePlayer.revealedHints.length
 
     if (isCorrect) {
-      const finalScore = calculateScore(0, newAttempts, activePlayer.revealedHints)
+      const solveTime = solveSeconds !== undefined && solveSeconds > 0
+        ? solveSeconds
+        : Math.max(1, currentSession.totalSeconds - (currentSession.remainingSeconds || 0))
+      const finalScore = calculateScore(solveTime, currentSession.totalSeconds, newAttempts, activePlayer.revealedHints)
 
-      // Update Player
+      // Update Player with solveTime and score
       const updatedPlayers = players.map((p) => {
         if (p.id === activePlayer.id) {
-          return { ...p, attempts: newAttempts, status: 'solved' as const, score: finalScore }
+          return { ...p, attempts: newAttempts, status: 'solved' as const, score: finalScore, solveTime }
         }
         if (p.sessionId === activeSessionId || (currentSession && p.joinCode === currentSession.joinCode)) {
           return { ...p, status: 'failed' as const }
@@ -241,12 +244,12 @@ export function App() {
         challengeTitle: activeChallenge.title,
         playerName: activePlayer.name,
         score: finalScore,
-        timeTaken: 0,
+        timeTaken: solveTime,
         attempts: newAttempts,
         hintsRevealed: hintsCount
       })
       setScores((prev) => [newScore, ...prev])
-      showToast(`🏆 VAULT BREACHED! Score: ${finalScore.toLocaleString()} pts`)
+      showToast(`🏆 VAULT BREACHED in ${solveTime}s! Score: ${finalScore.toLocaleString()} pts`)
     } else {
       // Failed attempt
       const updatedPlayers = players.map((p) =>

@@ -70,7 +70,7 @@ export const TerminalInput: React.FC<TerminalInputProps> = ({
 
       {/* Input Form */}
       <form onSubmit={handleSubmit} style={{ marginBottom: '1.25rem' }}>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <div className="terminal-input-row" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           <div style={{ position: 'relative', flex: 1 }}>
             <Lock
               size={16}

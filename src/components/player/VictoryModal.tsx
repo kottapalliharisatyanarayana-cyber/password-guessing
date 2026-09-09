@@ -9,6 +9,7 @@ interface VictoryModalProps {
   winnerName?: string
   score: number
   timeTaken?: number
+  totalSeconds?: number
   attempts: number
   hintsUsed: number
   revealedHints?: number[]
@@ -21,6 +22,8 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
   isWinner,
   winnerName,
   score,
+  timeTaken,
+  totalSeconds = 300,
   attempts,
   hintsUsed,
   revealedHints,
@@ -36,11 +39,14 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
   if (!isOpen) return null
 
   const attemptPenalty = Math.max(0, attempts - 1) * 50
-  const hintPenalty = calculateHintPenalty(revealedHints !== undefined ? revealedHints : hintsUsed)
+  const validTotal = Math.max(totalSeconds || 300, 1)
+  const elapsed = timeTaken !== undefined && timeTaken > 0 ? timeTaken : 0
+  const remainingSec = Math.max(0, validTotal - elapsed)
+  const speedBonus = isWinner ? Math.round((remainingSec / validTotal) * 5000) : 0
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: '520px', textAlign: 'center', position: 'relative' }}>
+      <div className="modal-content victory-modal-content" style={{ maxWidth: '520px', textAlign: 'center', position: 'relative' }}>
         {/* Glow Header */}
         <div
           style={{
@@ -65,7 +71,7 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
         </h2>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.75rem' }}>
           {isWinner
-            ? 'First-place breach authenticated! You cracked the system before everyone else.'
+            ? `First-place breach authenticated in ${elapsed}s! You cracked the system fastest.`
             : `Vault breached by ${winnerName || 'another player'}. Better luck in the next session!`}
         </p>
 
@@ -86,8 +92,9 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
             {score.toLocaleString()} <span style={{ fontSize: '1.1rem', color: 'var(--text-secondary)' }}>pts</span>
           </div>
 
-          {/* Breakdown Equation without time deduction */}
+          {/* Time-Based Breakdown Equation */}
           <div
+            className="victory-breakdown-grid"
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(3, 1fr)',
@@ -102,21 +109,23 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
               <div style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
                 <CheckCircle2 size={12} style={{ color: 'var(--neon-mint)' }} /> Base Score
               </div>
-              <strong style={{ color: 'var(--neon-mint)' }}>10,000 pts</strong>
+              <strong style={{ color: 'var(--neon-mint)' }}>5,000 pts</strong>
             </div>
             <div>
               <div style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
-                <Zap size={12} /> Guesses ({attempts})
+                <Zap size={12} style={{ color: 'var(--neon-amber)' }} /> Speed ({elapsed}s)
               </div>
-              <strong style={{ color: attemptPenalty > 0 ? 'var(--neon-crimson)' : 'var(--neon-mint)' }}>
-                {attemptPenalty > 0 ? `-${attemptPenalty} pts` : '0 pts'}
+              <strong style={{ color: 'var(--neon-amber)' }}>
+                +{speedBonus.toLocaleString()} pts
               </strong>
             </div>
             <div>
               <div style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
-                <Eye size={12} /> Clues ({hintsUsed})
+                <Eye size={12} /> Guesses ({attempts})
               </div>
-              <strong style={{ color: 'var(--neon-mint)' }}>0 pts (Free)</strong>
+              <strong style={{ color: attemptPenalty > 0 ? 'var(--neon-crimson)' : 'var(--neon-mint)' }}>
+                {attemptPenalty > 0 ? `-${attemptPenalty} pts` : '0 pts'}
+              </strong>
             </div>
           </div>
         </div>

@@ -45,15 +45,22 @@ export const DEFAULT_SETTINGS: AppSettings = {
 // Hint costs: Set to 0 because hints reveal strictly over the countdown timer with zero point deduction
 export const HINT_POINT_COSTS = [0, 0, 0, 0, 0, 0]
 
-// Score Calculation: Flat score based on successful crack & guess accuracy
+// Score Calculation: Based on speed of completion (fastest completion earns highest score and #1 rank)
 export function calculateScore(
-  _timeTaken?: number,
+  timeTaken: number = 0,
+  totalSeconds: number = 300,
   attempts: number = 1,
   _hintsRevealed?: number[] | number
 ): number {
-  const base = 10000
+  const baseScore = 5000
+  const validTotal = Math.max(totalSeconds || 300, 1)
+  const remainingSec = Math.max(0, validTotal - timeTaken)
+  // Speed bonus: up to 5,000 points strictly proportional to remaining clock time
+  const speedBonus = Math.round((remainingSec / validTotal) * 5000)
+  // Accuracy deduction: 50 points per failed attempt
   const attemptPenalty = Math.max(0, attempts - 1) * 50
-  return Math.max(0, base - attemptPenalty)
+
+  return Math.max(100, baseScore + speedBonus - attemptPenalty)
 }
 
 // Calculate total hint penalty points (always 0)
@@ -137,6 +144,7 @@ export function deduplicatePlayers(players: GamePlayer[]): GamePlayer[] {
         attempts: Math.max(existing.attempts || 0, p.attempts || 0),
         hintsUsed: Math.max(existing.hintsUsed || 0, p.hintsUsed || 0),
         score: Math.max(existing.score || 0, p.score || 0) || undefined,
+        solveTime: p.solveTime !== undefined ? p.solveTime : existing.solveTime,
         status: mergedStatus,
         revealedHints: Array.from(new Set([...(existing.revealedHints || []), ...(p.revealedHints || [])]))
       })
@@ -177,6 +185,7 @@ export function deduplicatePlayersByName(players: GamePlayer[]): GamePlayer[] {
         attempts: Math.max(existing.attempts || 0, p.attempts || 0),
         hintsUsed: Math.max(existing.hintsUsed || 0, p.hintsUsed || 0),
         score: Math.max(existing.score || 0, p.score || 0) || undefined,
+        solveTime: p.solveTime !== undefined ? p.solveTime : existing.solveTime,
         status: mergedStatus,
         revealedHints: Array.from(new Set([...(existing.revealedHints || []), ...(p.revealedHints || [])]))
       })

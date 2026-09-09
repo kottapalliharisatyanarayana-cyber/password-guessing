@@ -13,7 +13,7 @@ interface PlayerArenaProps {
   challenge: Challenge
   player: GamePlayer
   players: GamePlayer[]
-  onGuessAttempt: (isCorrect: boolean, guess: string) => void
+  onGuessAttempt: (isCorrect: boolean, guess: string, solveSeconds?: number) => void
   onRevealHint: (hintIndex: number) => void
   onLeaveGame: () => void
   onGoToLeaderboard: () => void
@@ -160,8 +160,9 @@ export const PlayerArena: React.FC<PlayerArenaProps> = ({
       feedback: isCorrect ? 'ACCESS GRANTED' : 'ACCESS DENIED'
     }
 
+    const solveSecs = Math.max(1, missionElapsedSeconds)
     setAttempts((prev) => [...prev, newLog])
-    onGuessAttempt(isCorrect, guess)
+    onGuessAttempt(isCorrect, guess, solveSecs)
 
     if (isCorrect) {
       setIsWon(true)
@@ -171,8 +172,13 @@ export const PlayerArena: React.FC<PlayerArenaProps> = ({
     return isCorrect
   }
 
-  // Score Calculation: purely based on base score and guess accuracy (no time penalty)
-  const currentScore = calculateScore(0, attempts.length, revealedHints)
+  // Score Calculation: purely based on speed of completion and guess accuracy
+  const currentScore = calculateScore(
+    missionElapsedSeconds,
+    session.totalSeconds,
+    Math.max(1, attempts.length),
+    revealedHints
+  )
 
   // Paused status
   const isPaused = session.status === 'paused'
@@ -191,7 +197,7 @@ export const PlayerArena: React.FC<PlayerArenaProps> = ({
   return (
     <div style={{ display: 'grid', gap: '1.5rem' }}>
       {/* Top Banner & Session HUD */}
-      <div className="glass-panel" style={{ padding: '1.25rem 1.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+      <div className="glass-panel player-hud" style={{ padding: '1.25rem 1.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <div
             style={{
@@ -209,14 +215,14 @@ export const PlayerArena: React.FC<PlayerArenaProps> = ({
             <Key size={22} />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
               <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#fff' }}>{challenge.title}</h2>
               <span className={`badge ${challenge.difficulty === 'Insane' ? 'badge-crimson' : challenge.difficulty === 'Hard' ? 'badge-amber' : challenge.difficulty === 'Medium' ? 'badge-cyan' : 'badge-mint'}`}>
                 {challenge.difficulty}
               </span>
               <span className="badge badge-violet">{challenge.category}</span>
             </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.85rem', marginTop: '0.2rem' }}>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.85rem', marginTop: '0.2rem', flexWrap: 'wrap' }}>
               <span>Room PIN: <strong style={{ color: 'var(--neon-mint)', fontFamily: 'var(--font-mono)' }}>{session.joinCode}</strong></span>
               <span>•</span>
               <span>Agent: <strong style={{ color: '#fff' }}>{player.name}</strong> ({player.avatar})</span>
@@ -279,12 +285,12 @@ export const PlayerArena: React.FC<PlayerArenaProps> = ({
         </div>
       )}
 
-      {/* Main Play Area Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 1fr', gap: '1.5rem', alignItems: 'start' }}>
+      {/* Main Play Area Grid - Responsive */}
+      <div className="player-arena-grid">
         {/* Left Column: Timer, Hints, and Terminal */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           {/* Synchronized Cyber Countdown Timer */}
-          <div className="timer-box">
+          <div className="timer-box player-timer-box">
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '0.35rem' }}>
               REMAINING MISSION CLOCK
             </span>
@@ -329,6 +335,7 @@ export const PlayerArena: React.FC<PlayerArenaProps> = ({
             players={players}
             currentPlayerId={player.id}
             currentScoreProjection={currentScore}
+            totalSeconds={session.totalSeconds}
           />
         </div>
       </div>
@@ -338,7 +345,9 @@ export const PlayerArena: React.FC<PlayerArenaProps> = ({
         isOpen={showVictoryModal}
         isWinner={isWon}
         winnerName={session.winnerName}
-        score={currentScore}
+        score={player.score || currentScore}
+        timeTaken={player.solveTime || missionElapsedSeconds}
+        totalSeconds={session.totalSeconds}
         attempts={attempts.length}
         hintsUsed={revealedHints.length}
         revealedHints={revealedHints}

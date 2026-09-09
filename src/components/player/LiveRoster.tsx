@@ -7,17 +7,31 @@ interface LiveRosterProps {
   players: GamePlayer[]
   currentPlayerId: string
   currentScoreProjection: number
+  totalSeconds?: number
 }
 
 export const LiveRoster: React.FC<LiveRosterProps> = ({
   players,
   currentPlayerId,
-  currentScoreProjection
+  currentScoreProjection,
+  totalSeconds = 300
 }) => {
-  const uniquePlayers = deduplicatePlayersByName(players)
+  // Sort players: Solved players with lowest solve time rank #1 (fastest first)
+  const uniquePlayers = deduplicatePlayersByName(players).sort((a, b) => {
+    if (a.status === 'solved' && b.status !== 'solved') return -1
+    if (b.status === 'solved' && a.status !== 'solved') return 1
+    if (a.status === 'solved' && b.status === 'solved') {
+      const timeA = a.solveTime !== undefined ? a.solveTime : 99999
+      const timeB = b.solveTime !== undefined ? b.solveTime : 99999
+      if (timeA !== timeB) return timeA - timeB
+      return (b.score || 0) - (a.score || 0)
+    }
+    if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0)
+    return a.attempts - b.attempts
+  })
 
   return (
-    <div className="glass-panel" style={{ padding: '1.25rem', height: '100%' }}>
+    <div className="glass-panel live-roster-panel" style={{ padding: '1.25rem', height: '100%' }}>
       {/* Projected Score Header */}
       <div
         style={{
@@ -30,43 +44,52 @@ export const LiveRoster: React.FC<LiveRosterProps> = ({
         }}
       >
         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          Real-Time Score Projection
+          Live Score Projection
         </span>
         <div style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', fontWeight: 800, color: 'var(--neon-mint)', textShadow: '0 0 16px rgba(0, 245, 160, 0.4)' }}>
           {currentScoreProjection.toLocaleString()} <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>pts</span>
         </div>
         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-          10,000 pts base • -50 pts per invalid attempt (no time penalty)
+          Speed bonus decays as clock ticks • Complete fast to finish #1!
         </span>
       </div>
 
       {/* Opponents Heading */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
         <h4 style={{ fontSize: '0.88rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-          <Users size={16} style={{ color: 'var(--neon-cyan)' }} />
-          Room Competitors ({uniquePlayers.length})
+          <Trophy size={16} style={{ color: 'var(--neon-amber)' }} />
+          Live Standings ({uniquePlayers.length})
         </h4>
         <span className="pulse-dot" />
       </div>
 
       {/* Competitors List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '360px', overflowY: 'auto' }}>
-        {uniquePlayers.map((p) => {
+      <div className="competitors-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '380px', overflowY: 'auto' }}>
+        {uniquePlayers.map((p, idx) => {
           const isYou = p.id === currentPlayerId
+          const isSolved = p.status === 'solved'
+          const rank = idx + 1
+          const rankMedal = rank === 1 && isSolved ? '🥇 #1' : rank === 2 && isSolved ? '🥈 #2' : rank === 3 && isSolved ? '🥉 #3' : `#${rank}`
+
           return (
             <div
               key={p.id}
+              className="competitor-row"
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 padding: '0.65rem 0.85rem',
                 borderRadius: 'var(--radius-md)',
-                background: isYou ? 'rgba(0, 245, 160, 0.08)' : 'rgba(10, 15, 29, 0.5)',
-                border: isYou ? '1px solid rgba(0, 245, 160, 0.3)' : '1px solid var(--border-subtle)'
+                background: isYou ? 'rgba(0, 245, 160, 0.08)' : isSolved ? 'rgba(245, 158, 11, 0.06)' : 'rgba(10, 15, 29, 0.5)',
+                border: isYou ? '1px solid rgba(0, 245, 160, 0.3)' : isSolved ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid var(--border-subtle)'
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: isSolved ? 'var(--neon-amber)' : 'var(--text-muted)', width: '28px' }}>
+                  {rankMedal}
+                </div>
+
                 <div
                   style={{
                     width: '32px',
@@ -91,20 +114,22 @@ export const LiveRoster: React.FC<LiveRosterProps> = ({
                   </div>
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', gap: '0.65rem', marginTop: '0.15rem' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                      <Zap size={11} /> {p.attempts} guesses
+                      <Zap size={11} /> {p.attempts} {p.attempts === 1 ? 'try' : 'tries'}
                     </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                      <Eye size={11} /> {p.hintsUsed} clues
-                    </span>
+                    {p.solveTime !== undefined && (
+                      <span style={{ color: 'var(--neon-amber)', fontWeight: 600 }}>
+                        ⚡ {p.solveTime}s
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
 
               {/* Status Indicator */}
               <div>
-                {p.status === 'solved' ? (
+                {isSolved ? (
                   <span className="badge badge-mint" style={{ fontSize: '0.65rem' }}>
-                    <CheckCircle2 size={11} /> CRACKED ({p.score}pts)
+                    <CheckCircle2 size={11} /> {p.score ? `${p.score} pts` : 'CRACKED'}
                   </span>
                 ) : p.status === 'failed' ? (
                   <span className="badge badge-crimson" style={{ fontSize: '0.65rem' }}>
