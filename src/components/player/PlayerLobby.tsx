@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { GameSession, Challenge, GamePlayer } from '../../types'
 import { sound } from '../../lib/sound'
-import { Shield, KeyRound, User, Users, Play, Radio, Sparkles } from 'lucide-react'
+import { supabaseRequestSync } from '../../lib/supabase'
+import { Shield, KeyRound, User, Users, Play, Radio, Sparkles, Loader2 } from 'lucide-react'
 
 interface PlayerLobbyProps {
   sessions: GameSession[]
@@ -30,10 +31,19 @@ export const PlayerLobby: React.FC<PlayerLobbyProps> = ({
   const [name, setName] = useState('')
   const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0])
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
 
-  React.useEffect(() => {
+  // Request cloud sync when opening lobby
+  useEffect(() => {
+    supabaseRequestSync()
+    const timer = setInterval(() => supabaseRequestSync(), 3000)
+    return () => clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
     if (initialCode) {
       setCode(initialCode.toUpperCase())
+      supabaseRequestSync()
     }
   }, [initialCode])
 
@@ -56,8 +66,21 @@ export const PlayerLobby: React.FC<PlayerLobbyProps> = ({
 
     const targetSession = sessions.find((s) => s.joinCode.toUpperCase() === cleanCode)
     if (!targetSession) {
-      setErrorMsg(`No active room found with PIN "${cleanCode}"`)
-      sound.playError()
+      // Trigger cloud sync and retry after 400ms
+      setIsSearching(true)
+      supabaseRequestSync()
+      setTimeout(() => {
+        setIsSearching(false)
+        const recheck = sessions.find((s) => s.joinCode.toUpperCase() === cleanCode)
+        if (recheck) {
+          sound.playClick()
+          setErrorMsg(null)
+          onJoinSession(cleanCode, cleanName, selectedAvatar)
+        } else {
+          setErrorMsg(`No active room found with PIN "${cleanCode}". Make sure the host has created the room.`)
+          sound.playError()
+        }
+      }, 500)
       return
     }
 
