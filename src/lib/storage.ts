@@ -1,4 +1,17 @@
 import { Challenge, GameSession, GamePlayer, ScoreEntry, AppSettings } from '../types'
+import {
+  cloudSaveSessions,
+  cloudSavePlayers,
+  cloudSaveChallenges,
+  cloudSaveScores,
+  cloudSaveSettings,
+  subscribeCloudSessions,
+  subscribeCloudPlayers,
+  subscribeCloudChallenges,
+  subscribeCloudScores,
+  isFirebaseConnected,
+  initFirebase
+} from './firebase'
 
 const KEYS = {
   CHALLENGES: 'crackvault_challenges',
@@ -22,16 +35,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
 // Hint costs: Set to 0 because hints reveal strictly over the countdown timer with zero point deduction
 export const HINT_POINT_COSTS = [0, 0, 0, 0, 0, 0]
 
-// Score Calculation: Flat score based on successful crack & guess accuracy (NO time deduction, NO hint deduction)
+// Score Calculation: Flat score based on successful crack & guess accuracy
 export function calculateScore(
   _timeTaken?: number,
   attempts: number = 1,
   _hintsRevealed?: number[] | number
 ): number {
   const base = 10000
-  // Each invalid attempt beyond the first incurs a 50 pt deduction. Time does NOT reduce score!
   const attemptPenalty = Math.max(0, attempts - 1) * 50
-
   return Math.max(0, base - attemptPenalty)
 }
 
@@ -40,7 +51,7 @@ export function calculateHintPenalty(_hintsRevealed?: number[] | number): number
   return 0
 }
 
-// Real-time broadcast channel
+// Real-time broadcast channel for intra-browser multi-tab sync
 const channel =
   typeof window !== 'undefined' && 'BroadcastChannel' in window
     ? new BroadcastChannel('crackvault_channel')
@@ -80,6 +91,9 @@ function ensureCleanState() {
 }
 ensureCleanState()
 
+// Flag to prevent cloud-to-local updates from bouncing back to cloud
+let isIncomingCloudUpdate = false
+
 // Storage API Helpers
 export const storage = {
   getChallenges(): Challenge[] {
@@ -99,6 +113,9 @@ export const storage = {
   saveChallenges(challenges: Challenge[]) {
     localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(challenges))
     broadcastStateChange('CHALLENGES_UPDATED')
+    if (!isIncomingCloudUpdate) {
+      cloudSaveChallenges(challenges)
+    }
   },
 
   getSessions(): GameSession[] {
@@ -117,6 +134,9 @@ export const storage = {
   saveSessions(sessions: GameSession[]) {
     localStorage.setItem(KEYS.SESSIONS, JSON.stringify(sessions))
     broadcastStateChange('SESSIONS_UPDATED')
+    if (!isIncomingCloudUpdate) {
+      cloudSaveSessions(sessions)
+    }
   },
 
   getPlayers(): GamePlayer[] {
@@ -135,6 +155,9 @@ export const storage = {
   savePlayers(players: GamePlayer[]) {
     localStorage.setItem(KEYS.PLAYERS, JSON.stringify(players))
     broadcastStateChange('PLAYERS_UPDATED')
+    if (!isIncomingCloudUpdate) {
+      cloudSavePlayers(players)
+    }
   },
 
   getScores(): ScoreEntry[] {
@@ -153,6 +176,9 @@ export const storage = {
   saveScores(scores: ScoreEntry[]) {
     localStorage.setItem(KEYS.SCORES, JSON.stringify(scores))
     broadcastStateChange('SCORES_UPDATED')
+    if (!isIncomingCloudUpdate) {
+      cloudSaveScores(scores)
+    }
   },
 
   addScore(entry: Omit<ScoreEntry, 'id' | 'createdAt'>): ScoreEntry {
@@ -183,6 +209,9 @@ export const storage = {
   saveSettings(settings: AppSettings) {
     localStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings))
     broadcastStateChange('SETTINGS_UPDATED')
+    if (!isIncomingCloudUpdate) {
+      cloudSaveSettings(settings)
+    }
   },
 
   resetAll() {
@@ -193,5 +222,83 @@ export const storage = {
     localStorage.setItem(KEYS.PLAYERS, JSON.stringify([]))
     localStorage.setItem(KEYS.CLEAN_V4, 'true')
     broadcastStateChange('ALL_RESET')
+    if (!isIncomingCloudUpdate) {
+      cloudSaveChallenges([])
+      cloudSaveSessions([])
+      cloudSavePlayers([])
+      cloudSaveScores([])
+      cloudSaveSettings(DEFAULT_SETTINGS)
+    }
+  }
+}
+
+// --- CLOUD SYNC INITIALIZATION & LISTENER SUBSCRIPTION ---
+
+let unsubscribers: Array<(() => void) | null> = []
+
+export function initCloudSync(onSyncEvent?: (type: string) => void): () => void {
+  // Teardown any previous listeners
+  unsubscribers.forEach((unsub) => unsub && unsub())
+  unsubscribers = []
+
+  const db = initFirebase()
+  if (!db) return () => {}
+
+  // 1. Sessions Listener
+  const unsubSessions = subscribeCloudSessions((remoteSessions) => {
+    isIncomingCloudUpdate = true
+    try {
+      localStorage.setItem(KEYS.SESSIONS, JSON.stringify(remoteSessions))
+      broadcastStateChange('SESSIONS_UPDATED')
+      onSyncEvent?.('SESSIONS_UPDATED')
+    } finally {
+      isIncomingCloudUpdate = false
+    }
+  })
+
+  // 2. Players Listener
+  const unsubPlayers = subscribeCloudPlayers((remotePlayers) => {
+    isIncomingCloudUpdate = true
+    try {
+      localStorage.setItem(KEYS.PLAYERS, JSON.stringify(remotePlayers))
+      broadcastStateChange('PLAYERS_UPDATED')
+      onSyncEvent?.('PLAYERS_UPDATED')
+    } finally {
+      isIncomingCloudUpdate = false
+    }
+  })
+
+  // 3. Challenges Listener
+  const unsubChallenges = subscribeCloudChallenges((remoteChallenges) => {
+    // Only update if remote has challenges or local is empty
+    if (remoteChallenges.length > 0 || storage.getChallenges().length === 0) {
+      isIncomingCloudUpdate = true
+      try {
+        localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(remoteChallenges))
+        broadcastStateChange('CHALLENGES_UPDATED')
+        onSyncEvent?.('CHALLENGES_UPDATED')
+      } finally {
+        isIncomingCloudUpdate = false
+      }
+    }
+  })
+
+  // 4. Scores Listener
+  const unsubScores = subscribeCloudScores((remoteScores) => {
+    isIncomingCloudUpdate = true
+    try {
+      localStorage.setItem(KEYS.SCORES, JSON.stringify(remoteScores))
+      broadcastStateChange('SCORES_UPDATED')
+      onSyncEvent?.('SCORES_UPDATED')
+    } finally {
+      isIncomingCloudUpdate = false
+    }
+  })
+
+  unsubscribers = [unsubSessions, unsubPlayers, unsubChallenges, unsubScores]
+
+  return () => {
+    unsubscribers.forEach((unsub) => unsub && unsub())
+    unsubscribers = []
   }
 }

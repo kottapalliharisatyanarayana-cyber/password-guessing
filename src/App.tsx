@@ -10,8 +10,10 @@ import {
   storage,
   subscribeStateChange,
   calculateScore,
+  initCloudSync,
   DEFAULT_SETTINGS
 } from './lib/storage'
+import { isFirebaseConnected } from './lib/firebase'
 import { sound } from './lib/sound'
 import { Navbar } from './components/Navbar'
 import { PlayerLobby } from './components/player/PlayerLobby'
@@ -28,6 +30,7 @@ export function App() {
   const [players, setPlayers] = useState<GamePlayer[]>([])
   const [scores, setScores] = useState<ScoreEntry[]>([])
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
+  const [cloudConnected, setCloudConnected] = useState(isFirebaseConnected())
 
   // Navigation & UI States
   const [currentMode, setCurrentMode] = useState<'player' | 'admin'>('player')
@@ -66,20 +69,32 @@ export function App() {
     const s = storage.getSettings()
     setSettings(s)
     sound.setEnabled(s.soundEnabled)
+    setCloudConnected(isFirebaseConnected())
   }, [])
 
   useEffect(() => {
     reloadData()
 
     // Cross-tab reactive listener
-    const unsubscribe = subscribeStateChange((action) => {
+    const unsubscribeLocal = subscribeStateChange((action) => {
       reloadData()
       if (action === 'SESSIONS_UPDATED') {
         showToast('Live session state updated across network')
       }
     })
 
-    return () => unsubscribe()
+    // Realtime Cloud listener across separate devices
+    const unsubscribeCloud = initCloudSync((action) => {
+      reloadData()
+      if (action === 'SESSIONS_UPDATED') {
+        showToast('⚡ Realtime Cloud: Live session updated')
+      }
+    })
+
+    return () => {
+      unsubscribeLocal()
+      unsubscribeCloud()
+    }
   }, [reloadData, showToast])
 
   // Sound toggle
@@ -421,6 +436,7 @@ export function App() {
         soundEnabled={settings.soundEnabled}
         onToggleSound={handleToggleSound}
         activeSessionCount={sessions.filter((s) => s.status === 'playing').length}
+        cloudConnected={cloudConnected}
       />
 
       {/* Main Content Area */}

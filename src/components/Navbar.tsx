@@ -8,6 +8,7 @@ interface NavbarProps {
   soundEnabled: boolean
   onToggleSound: () => void
   activeSessionCount: number
+  cloudConnected?: boolean
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -15,7 +16,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectMode,
   soundEnabled,
   onToggleSound,
-  activeSessionCount
+  activeSessionCount,
+  cloudConnected
 }) => {
   return (
     <header className="app-header">
@@ -33,6 +35,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           <span className="badge badge-mint" style={{ fontSize: '0.65rem' }}>
             <span className="pulse-dot" style={{ width: '5px', height: '5px' }} />
             {activeSessionCount > 0 ? `${activeSessionCount} LIVE` : 'STANDBY'}
+          </span>
+          <span
+            className={`badge ${cloudConnected ? 'badge-cyan' : ''}`}
+            style={{
+              fontSize: '0.65rem',
+              background: cloudConnected ? undefined : 'rgba(255,255,255,0.05)',
+              color: cloudConnected ? undefined : 'var(--text-muted)'
+            }}
+            title={cloudConnected ? 'Multiplayer active across all laptops/phones' : 'Local storage mode'}
+          >
+            {cloudConnected ? '⚡ CLOUD SYNC' : 'LOCAL'}
           </span>
         </div>
       </div>
