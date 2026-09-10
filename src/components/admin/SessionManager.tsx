@@ -85,6 +85,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
     return () => clearInterval(timer)
   }, [sessions])
 
+  const [qrDataUrl, setQrDataUrl] = useState<string>('')
   const [qrHost, setQrHost] = useState<string>(() => {
     if (typeof window === 'undefined') return '10.118.105.29'
     const h = window.location.hostname
