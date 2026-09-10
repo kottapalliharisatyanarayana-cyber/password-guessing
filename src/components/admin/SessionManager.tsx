@@ -85,23 +85,33 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
     return () => clearInterval(timer)
   }, [sessions])
 
-  const [qrDataUrl, setQrDataUrl] = useState<string>('')
-  const [qrHost, setQrHost] = useState<string>(
-    typeof window !== 'undefined'
-      ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '10.118.105.29' : window.location.hostname)
-      : '10.118.105.29'
-  )
-  const [qrPort, setQrPort] = useState<string>(
-    typeof window !== 'undefined' && window.location.port ? window.location.port : '5173'
-  )
+  const [qrHost, setQrHost] = useState<string>(() => {
+    if (typeof window === 'undefined') return '10.118.105.29'
+    const h = window.location.hostname
+    if (h === 'localhost' || h === '127.0.0.1') return '10.118.105.29'
+    return h
+  })
+  const [qrPort, setQrPort] = useState<string>(() => {
+    if (typeof window === 'undefined') return '5173'
+    if (window.location.protocol === 'https:' || !window.location.port) return ''
+    return window.location.port || '5173'
+  })
   const [qrContrast, setQrContrast] = useState<'white' | 'cyber'>('white')
+
+  const getTargetQrUrl = (code: string) => {
+    if (typeof window === 'undefined') return `http://${qrHost}:5173/?join=${code}`
+    const isHttps = window.location.protocol === 'https:'
+    const protocol = isHttps ? 'https://' : 'http://'
+    const portPart = qrPort && qrPort !== '80' && qrPort !== '443' ? `:${qrPort}` : ''
+    return `${protocol}${qrHost}${portPart}/?join=${code}`
+  }
 
   useEffect(() => {
     if (!qrModalSession) {
       setQrDataUrl('')
       return
     }
-    const targetUrl = `http://${qrHost}:${qrPort}/?join=${qrModalSession.joinCode}`
+    const targetUrl = getTargetQrUrl(qrModalSession.joinCode)
     const isWhite = qrContrast === 'white'
     generateQrDataUrl(targetUrl, {
       darkColor: isWhite ? '#000000' : '#00f5a0',
@@ -790,13 +800,13 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
               }}
             >
               <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {`http://${qrHost}:${qrPort}/?join=${qrModalSession.joinCode}`}
+                {getTargetQrUrl(qrModalSession.joinCode)}
               </span>
               <button
                 className="btn-secondary"
                 style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', flexShrink: 0 }}
                 onClick={() => {
-                  const url = `http://${qrHost}:${qrPort}/?join=${qrModalSession.joinCode}`
+                  const url = getTargetQrUrl(qrModalSession.joinCode)
                   navigator.clipboard.writeText(url)
                   sound.playClick()
                   onNotify('Join link copied to clipboard!')
@@ -862,9 +872,9 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
                   type="button"
                   className="btn-secondary"
                   style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem', flexShrink: 0 }}
-                  onClick={() => setQrHost('10.10.65.21')}
+                  onClick={() => setQrHost('10.118.105.29')}
                 >
-                  Use Wi-Fi IP
+                  Use Wi-Fi IP (10.118.105.29)
                 </button>
               </div>
             </div>

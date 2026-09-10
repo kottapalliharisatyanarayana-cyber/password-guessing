@@ -67,6 +67,8 @@ export const PlayerLobby: React.FC<PlayerLobbyProps> = ({
         .then((remoteSession) => {
           setIsSearching(false)
           if (remoteSession && remoteSession.status !== 'ended') {
+            const current = storage.getSessions()
+            storage.saveSessions([remoteSession, ...current.filter((s) => s.id !== remoteSession.id)])
             sound.playClick()
             setErrorMsg(null)
             onJoinSession(cleanCode, cleanName, selectedAvatar)

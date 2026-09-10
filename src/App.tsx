@@ -16,6 +16,7 @@ import {
   DEFAULT_SETTINGS
 } from './lib/storage'
 import {
+  apiGetSessionByCode,
   apiSavePlayer,
   apiSaveSession,
   apiUpdateSession,
@@ -178,12 +179,28 @@ export function App() {
 
   // --- PLAYER ACTIONS ---
 
-  const handleJoinSession = (sessionCode: string, playerName: string, avatar: string) => {
+  const handleJoinSession = async (sessionCode: string, playerName: string, avatar: string) => {
     const cleanCode = sessionCode.trim().toUpperCase()
-    const targetSession =
+    let targetSession =
       sessions.find((s) => s.joinCode.toUpperCase() === cleanCode && s.status !== 'ended') ||
       sessions.find((s) => s.joinCode.toUpperCase() === cleanCode)
-    if (!targetSession) return
+
+    if (!targetSession) {
+      try {
+        const remote = await apiGetSessionByCode(cleanCode)
+        if (remote) {
+          targetSession = remote
+          const merged = [remote, ...sessions.filter((s) => s.id !== remote.id)]
+          setSessions(merged)
+          storage.saveSessions(merged)
+        }
+      } catch {}
+    }
+
+    if (!targetSession) {
+      showToast(`Room PIN "${cleanCode}" not found. Ask your host for the correct PIN.`)
+      return
+    }
 
     const cleanName = playerName.trim()
 
