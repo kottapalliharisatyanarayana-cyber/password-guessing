@@ -35,7 +35,7 @@ export interface GameSession {
   challenge?: Challenge
   joinCode: string
   status: SessionStatus
-  startedAt?: number // timestamp
+  startedAt?: number | null // timestamp or null when reset to lobby
   totalSeconds: number
   remainingSeconds: number
   winnerName?: string

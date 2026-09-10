@@ -198,6 +198,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {activeTab === 'leaderboard' && (
         <LeaderboardView
           scores={scores}
+          challenges={challenges}
+          sessions={sessions}
+          players={players}
           onClearLeaderboard={onClearLeaderboard}
           onNotify={onNotify}
         />

@@ -9,6 +9,7 @@ const memoryChallenges = new Map()
 router.get('/', async (req, res) => {
   try {
     const challenges = await Challenge.find().sort({ createdAt: -1 })
+    memoryChallenges.clear()
     challenges.forEach((c) => memoryChallenges.set(c.id, c.toObject ? c.toObject() : c))
     return res.json(challenges)
   } catch (err) {
@@ -85,16 +86,21 @@ router.delete('/all', async (req, res) => {
 
 // DELETE /api/challenges/:id
 router.delete('/:id', async (req, res) => {
-  memoryChallenges.delete(req.params.id)
+  const challengeId = req.params.id
+  memoryChallenges.delete(challengeId)
   try {
+    const deleteFilters = [{ id: challengeId }]
+    if (challengeId.length === 24 && /^[0-9a-fA-F]{24}$/.test(challengeId)) {
+      deleteFilters.push({ _id: challengeId })
+    }
     await Promise.all([
-      Challenge.deleteOne({ id: req.params.id }),
-      Session.deleteMany({ challengeId: req.params.id })
+      Challenge.deleteMany({ $or: deleteFilters }),
+      Session.deleteMany({ challengeId })
     ])
   } catch (err) {
     console.warn('⚠️ [Challenges API] MongoDB delete error:', err.message)
   }
-  return res.json({ success: true, id: req.params.id })
+  return res.json({ success: true, id: challengeId })
 })
 
 export default router

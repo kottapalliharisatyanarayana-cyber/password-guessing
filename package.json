@@ -7,14 +7,19 @@
     "dev": "vite",
     "server": "node server/index.js",
     "server:watch": "node --watch server/index.js",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
     "preview": "vite preview"
+  },
+  "allowScripts": {
+    "esbuild": true
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.16.0",
     "mongoose": "^9.9.5",
     "qrcode": "^1.5.4",

@@ -1,16 +1,15 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { Challenge, GameSession, GamePlayer, ScoreEntry } from '../types'
 import { PlayerLobby } from '../components/player/PlayerLobby'
 import { PlayerArena } from '../components/player/PlayerArena'
-import { LeaderboardView } from '../components/admin/LeaderboardView'
-import { Shield, Volume2, VolumeX, Trophy, X, Lock } from 'lucide-react'
+import { Shield, Volume2, VolumeX, Lock } from 'lucide-react'
 import { sound } from '../lib/sound'
 
 interface PlayerPageProps {
   sessions: GameSession[]
   challenges: Challenge[]
   players: GamePlayer[]
-  scores: ScoreEntry[]
+  scores?: ScoreEntry[]
   activeSessionId: string | null
   currentSession?: GameSession
   currentChallenge?: Challenge
@@ -31,7 +30,6 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
   sessions,
   challenges,
   players,
-  scores,
   activeSessionId,
   currentSession,
   currentChallenge,
@@ -47,7 +45,6 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
   onLeaveGame,
   onNavigateToAdmin
 }) => {
-  const [showLeaderboard, setShowLeaderboard] = useState(false)
   const activeSessionCount = sessions.filter((s) => s.status === 'playing').length
   const isDirectEvent = Boolean(initialJoinCode && initialJoinCode.trim().length > 0)
 
@@ -86,16 +83,6 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
 
         {/* Right Controls for Players */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-          <button
-            className="btn-secondary"
-            onClick={() => {
-              setShowLeaderboard(true)
-              sound.playClick()
-            }}
-            style={{ fontSize: '0.78rem', padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-          >
-            <Trophy size={14} style={{ color: 'var(--neon-amber)' }} /> Leaderboard
-          </button>
           <button
             className="btn-icon"
             onClick={() => {
@@ -136,7 +123,6 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
               onGuessAttempt={onPlayerGuessAttempt}
               onRevealHint={onPlayerRevealHint}
               onLeaveGame={onLeaveGame}
-              onGoToLeaderboard={() => setShowLeaderboard(true)}
             />
           )
         ) : (
@@ -150,33 +136,6 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
           />
         )}
       </main>
-
-      {/* Global Leaderboard Modal */}
-      {showLeaderboard && (
-        <div className="modal-overlay" onClick={() => setShowLeaderboard(false)}>
-          <div
-            className="modal-content"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '850px', width: '92%', maxHeight: '88vh', overflowY: 'auto' }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
-              <button
-                className="btn-secondary"
-                onClick={() => setShowLeaderboard(false)}
-                style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-              >
-                <X size={14} /> Close
-              </button>
-            </div>
-            <LeaderboardView
-              scores={scores}
-              readOnly={true}
-              onClearLeaderboard={() => {}}
-              onNotify={() => {}}
-            />
-          </div>
-        </div>
-      )}
 
       {/* Discrete Contestant Footer */}
       <footer

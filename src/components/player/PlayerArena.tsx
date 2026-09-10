@@ -16,7 +16,7 @@ interface PlayerArenaProps {
   onGuessAttempt: (isCorrect: boolean, guess: string, solveSeconds?: number) => void
   onRevealHint: (hintIndex: number) => void
   onLeaveGame: () => void
-  onGoToLeaderboard: () => void
+  onGoToLeaderboard?: () => void
 }
 
 export const PlayerArena: React.FC<PlayerArenaProps> = ({
@@ -41,12 +41,15 @@ export const PlayerArena: React.FC<PlayerArenaProps> = ({
   const [isLost, setIsLost] = useState<boolean>(player.status === 'failed')
   const [showVictoryModal, setShowVictoryModal] = useState<boolean>(false)
 
-  // Keep remaining time synced when mission broadcast is paused by admin
+  // Keep remaining time synced when mission broadcast is started, resumed, or paused by admin
   useEffect(() => {
-    if (session.status === 'paused' && session.remainingSeconds !== undefined) {
+    if (session.status === 'playing' && session.startedAt) {
+      const computed = Math.max(0, session.totalSeconds - Math.floor((Date.now() - session.startedAt) / 1000))
+      setSecondsRemaining(computed)
+    } else if (session.status === 'paused' && session.remainingSeconds !== undefined) {
       setSecondsRemaining(session.remainingSeconds)
     }
-  }, [session.status, session.remainingSeconds])
+  }, [session.status, session.startedAt, session.remainingSeconds, session.totalSeconds])
 
   // Keep revealed hints synced with player prop
   useEffect(() => {

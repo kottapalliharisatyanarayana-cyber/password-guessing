@@ -377,7 +377,6 @@ export function App() {
     const updated = [newSession, ...sessions]
     setSessions(updated)
     storage.saveSessions(updated)
-    storage.saveChallenges(challenges)
     apiSaveSession(newSession).catch(() => {})
     showToast(`Room ${code} launched in Lobby mode`)
   }
@@ -400,22 +399,32 @@ export function App() {
   }
 
   const handlePauseSession = (sessionId: string) => {
+    const sTarget = sessions.find((s) => s.id === sessionId)
+    const currentRemaining =
+      sTarget && sTarget.startedAt
+        ? Math.max(0, sTarget.totalSeconds - Math.floor((Date.now() - sTarget.startedAt) / 1000))
+        : (sTarget?.remainingSeconds ?? 300)
+
     const updated = sessions.map((s) =>
-      s.id === sessionId ? { ...s, status: 'paused' as const } : s
+      s.id === sessionId ? { ...s, status: 'paused' as const, remainingSeconds: currentRemaining } : s
     )
     setSessions(updated)
     storage.saveSessions(updated)
-    apiUpdateSession(sessionId, { status: 'paused' }).catch(() => {})
+    apiUpdateSession(sessionId, { status: 'paused', remainingSeconds: currentRemaining }).catch(() => {})
     showToast('Mission broadcast paused — all contestant clocks frozen')
   }
 
   const handleResumeSession = (sessionId: string) => {
+    const sTarget = sessions.find((s) => s.id === sessionId)
+    const remaining = sTarget?.remainingSeconds ?? sTarget?.totalSeconds ?? 300
+    const newStartedAt = Date.now() - (sTarget ? (sTarget.totalSeconds - remaining) * 1000 : 0)
+
     const updated = sessions.map((s) =>
-      s.id === sessionId ? { ...s, status: 'playing' as const } : s
+      s.id === sessionId ? { ...s, status: 'playing' as const, startedAt: newStartedAt } : s
     )
     setSessions(updated)
     storage.saveSessions(updated)
-    apiUpdateSession(sessionId, { status: 'playing' }).catch(() => {})
+    apiUpdateSession(sessionId, { status: 'playing', startedAt: newStartedAt }).catch(() => {})
     showToast('Mission broadcast resumed!')
   }
 
@@ -428,6 +437,7 @@ export function App() {
         ? {
             ...s,
             status: 'lobby' as const,
+            startedAt: undefined,
             remainingSeconds: s.totalSeconds,
             winnerName: undefined,
             winnerScore: undefined,
@@ -447,6 +457,7 @@ export function App() {
     storage.savePlayers(updatedPlayers)
     apiUpdateSession(sessionId, {
       status: 'lobby',
+      startedAt: null,
       remainingSeconds: sTarget.totalSeconds,
       winnerName: undefined,
       winnerScore: undefined,
@@ -523,15 +534,13 @@ export function App() {
   const handleDeleteChallenge = (id: string) => {
     const updated = challenges.filter((c) => c.id !== id)
     setChallenges(updated)
-    storage.saveChallenges(updated)
-    apiDeleteChallenge(id).catch(() => {})
+    storage.deleteChallenge(id)
 
     // Also remove any sessions associated with this deleted challenge
     const orphanedSessions = sessions.filter((s) => s.challengeId === id)
-    orphanedSessions.forEach((s) => apiDeleteSession(s.id).catch(() => {}))
+    orphanedSessions.forEach((s) => storage.deleteSession(s.id))
     const updatedSessions = sessions.filter((s) => s.challengeId !== id)
     setSessions(updatedSessions)
-    storage.saveSessions(updatedSessions)
   }
 
   const handleClearLeaderboard = () => {

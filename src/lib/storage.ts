@@ -8,6 +8,7 @@ import {
   apiSyncScores,
   apiSaveScore,
   apiDeleteSession,
+  apiDeleteChallenge,
   apiGetSessions,
   apiGetPlayers,
   apiGetChallenges,
@@ -24,6 +25,7 @@ const KEYS = {
   SCORES: 'crackvault_scores',
   SETTINGS: 'crackvault_settings',
   DELETED_SESSIONS: 'crackvault_deleted_sessions',
+  DELETED_CHALLENGES: 'crackvault_deleted_challenges',
   CLEAN_V7: 'crackvault_clean_v7'
 }
 
@@ -51,6 +53,34 @@ export function isSessionDeleted(sessionId: string): boolean {
     if (!raw) return false
     const map: Record<string, number> = JSON.parse(raw)
     return Boolean(map[sessionId])
+  } catch {
+    return false
+  }
+}
+
+// Track deleted challenge IDs to prevent automatic recreation or zombie resurrection
+export function markChallengeDeleted(challengeId: string) {
+  if (typeof localStorage === 'undefined' || !challengeId) return
+  try {
+    const raw = localStorage.getItem(KEYS.DELETED_CHALLENGES)
+    const map: Record<string, number> = raw ? JSON.parse(raw) : {}
+    map[challengeId] = Date.now()
+    const cutoff = Date.now() - 7 * 86400000
+    for (const id in map) {
+      if (map[id] < cutoff) delete map[id]
+    }
+    localStorage.setItem(KEYS.DELETED_CHALLENGES, JSON.stringify(map))
+    broadcastStateChange('CHALLENGE_DELETED', challengeId)
+  } catch {}
+}
+
+export function isChallengeDeleted(challengeId: string): boolean {
+  if (typeof localStorage === 'undefined' || !challengeId) return false
+  try {
+    const raw = localStorage.getItem(KEYS.DELETED_CHALLENGES)
+    if (!raw) return false
+    const map: Record<string, number> = JSON.parse(raw)
+    return Boolean(map[challengeId])
   } catch {
     return false
   }
@@ -231,19 +261,23 @@ export const storage = {
       return []
     }
     try {
-      return JSON.parse(raw)
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed)
+        ? parsed.filter((c) => c && c.id && !isChallengeDeleted(c.id))
+        : []
     } catch {
       return []
     }
   },
 
   saveChallenges(challenges: Challenge[]) {
+    const clean = challenges.filter((c) => c && c.id && !isChallengeDeleted(c.id))
     try {
-      localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(challenges))
+      localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(clean))
     } catch (e) {
       console.warn('⚠️ [Storage] LocalStorage quota exceeded, storing lightweight challenges locally:', e)
       try {
-        const lightweight = challenges.map((c) => ({
+        const lightweight = clean.map((c) => ({
           ...c,
           imageUrl: c.imageUrl && c.imageUrl.length > 500 ? '' : c.imageUrl,
           hints: c.hints.map((h) => (h && h.length > 500 ? '[Image Attached]' : h)) as [string, string, string, string, string],
@@ -256,7 +290,13 @@ export const storage = {
       } catch {}
     }
     broadcastStateChange('CHALLENGES_UPDATED')
-    apiSyncChallenges(challenges).catch(() => {})
+  },
+
+  deleteChallenge(id: string) {
+    markChallengeDeleted(id)
+    const current = this.getChallenges().filter((c) => c.id !== id)
+    this.saveChallenges(current)
+    apiDeleteChallenge(id).catch(() => {})
   },
 
   getSessions(): GameSession[] {
@@ -279,7 +319,6 @@ export const storage = {
     const clean = sessions.filter((s) => s && s.id && !isSessionDeleted(s.id))
     localStorage.setItem(KEYS.SESSIONS, JSON.stringify(clean))
     broadcastStateChange('SESSIONS_UPDATED')
-    apiSyncSessions(clean).catch(() => {})
   },
 
   deleteSession(sessionId: string) {
@@ -435,36 +474,20 @@ export function reconcileSessions(
       // If older than 25s and remote doesn't have it, it was deleted on remote.
       // Never resurrect it or push it back to remote!
     } else {
-      // Both have the session: resolve conflicting states intelligently
-      const statusWeight = (status?: string) => {
-        if (status === 'ended') return 4
-        if (status === 'playing') return 3
-        if (status === 'paused') return 2
-        return 1
-      }
-      const lWeight = statusWeight(l.status)
-      const rWeight = statusWeight(r.status)
-
-      if (lWeight > rWeight) {
-        // Local is ahead (e.g. started playing while remote poll was in flight)
-        map.set(l.id, { ...r, ...l })
-        needsPushToRemote = true
-      } else if (rWeight > lWeight) {
-        // Remote is ahead (e.g. paused or ended by host)
-        map.set(l.id, { ...l, ...r })
-      } else {
-        // Equal status: pick whichever has more hints/winner or keep local challenge attached
-        const lHints = l.forceUnlockedHints?.length || 0
-        const rHints = r.forceUnlockedHints?.length || 0
-        map.set(l.id, {
-          ...r,
-          ...l,
-          challenge: l.challenge || r.challenge,
-          forceUnlockedHints: lHints >= rHints ? l.forceUnlockedHints : r.forceUnlockedHints,
-          winnerName: r.winnerName || l.winnerName,
-          winnerScore: r.winnerScore !== undefined ? r.winnerScore : l.winnerScore
-        })
-      }
+      // Both have the session: Remote (server) is the authoritative source of truth for status and timing.
+      // Never allow a client tab to override the host's pause, stop, or reset signal!
+      const lHints = l.forceUnlockedHints?.length || 0
+      const rHints = r.forceUnlockedHints?.length || 0
+      map.set(l.id, {
+        ...l,
+        ...r,
+        startedAt: r.status === 'lobby' ? undefined : (r.startedAt ?? l.startedAt),
+        remainingSeconds: r.remainingSeconds !== undefined ? r.remainingSeconds : (l.remainingSeconds ?? l.totalSeconds),
+        challenge: l.challenge || r.challenge,
+        forceUnlockedHints: rHints >= lHints ? r.forceUnlockedHints : l.forceUnlockedHints,
+        winnerName: r.winnerName || l.winnerName,
+        winnerScore: r.winnerScore !== undefined ? r.winnerScore : l.winnerScore
+      })
     }
   })
 
@@ -543,10 +566,17 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
 
       // Reconcile Challenges
       if (remoteChallenges && Array.isArray(remoteChallenges)) {
+        const cleanRemote = remoteChallenges.filter((c) => {
+          if (c && c.id && isChallengeDeleted(c.id)) {
+            apiDeleteChallenge(c.id).catch(() => {})
+            return false
+          }
+          return c && c.id
+        })
         const local = storage.getChallenges()
-        if (remoteChallenges.length !== local.length || remoteChallenges.some((c, i) => !local[i] || c.id !== local[i].id)) {
+        if (cleanRemote.length !== local.length || cleanRemote.some((c, i) => !local[i] || c.id !== local[i].id)) {
           try {
-            localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(remoteChallenges))
+            localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(cleanRemote))
           } catch {}
           broadcastStateChange('CHALLENGES_UPDATED')
           onSyncEvent?.('CHALLENGES_UPDATED')
