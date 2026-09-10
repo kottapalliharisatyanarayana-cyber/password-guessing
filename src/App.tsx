@@ -494,8 +494,8 @@ export function App() {
     const sTarget = sessions.find((s) => s.id === sessionId)
     const updated = sessions.filter((s) => s.id !== sessionId)
     setSessions(updated)
-    storage.saveSessions(updated)
-    apiDeleteSession(sessionId).catch(() => {})
+    storage.deleteSession(sessionId)
+    apiClearSessionPlayers(sessionId).catch(() => {})
 
     const updatedPlayers = players.filter(
       (p) =>
@@ -504,7 +504,7 @@ export function App() {
     )
     setPlayers(updatedPlayers)
     storage.savePlayers(updatedPlayers)
-    showToast('Session deleted')
+    showToast('Session permanently deleted')
   }
 
   const handleSaveChallenge = async (ch: Challenge) => {
@@ -688,6 +688,7 @@ export function App() {
           sessions={sessions}
           challenges={challenges}
           players={players}
+          scores={scores}
           activeSessionId={activeSessionId}
           currentSession={currentSession}
           currentChallenge={currentChallenge}

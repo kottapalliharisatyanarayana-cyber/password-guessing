@@ -131,8 +131,11 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
-          <button className="btn-secondary" onClick={onPlayAgain}>
+        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button className="btn-primary" onClick={onGoToLeaderboard} style={{ fontSize: '0.85rem' }}>
+            <Trophy size={15} /> View Hall of Fame
+          </button>
+          <button className="btn-secondary" onClick={onPlayAgain} style={{ fontSize: '0.85rem' }}>
             Return to Lobby
           </button>
         </div>

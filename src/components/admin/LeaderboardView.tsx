@@ -5,14 +5,16 @@ import { Trophy, Medal, Award, Clock, Zap, Eye, Search, Trash2 } from 'lucide-re
 
 interface LeaderboardViewProps {
   scores: ScoreEntry[]
-  onClearLeaderboard: () => void
-  onNotify: (msg: string) => void
+  onClearLeaderboard?: () => void
+  onNotify?: (msg: string) => void
+  readOnly?: boolean
 }
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   scores,
   onClearLeaderboard,
-  onNotify
+  onNotify,
+  readOnly = false
 }) => {
   const [search, setSearch] = useState('')
 
@@ -34,9 +36,9 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
   const handleClear = () => {
     if (confirm('Are you sure you want to purge all historical leaderboard entries?')) {
-      onClearLeaderboard()
+      onClearLeaderboard?.()
       sound.playClick()
-      onNotify('Leaderboard wiped')
+      onNotify?.('Leaderboard wiped')
     }
   }
 
@@ -51,7 +53,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           </p>
         </div>
 
-        {scores.length > 0 && (
+        {scores.length > 0 && !readOnly && onClearLeaderboard && (
           <button className="btn-secondary" onClick={handleClear} style={{ color: 'var(--neon-crimson)', borderColor: 'rgba(255, 51, 102, 0.3)' }}>
             <Trash2 size={15} /> Clear Records
           </button>

@@ -6,6 +6,8 @@ import {
   apiSyncChallenges,
   apiSaveChallenge,
   apiSyncScores,
+  apiSaveScore,
+  apiDeleteSession,
   apiGetSessions,
   apiGetPlayers,
   apiGetChallenges,
@@ -21,7 +23,37 @@ const KEYS = {
   PLAYERS: 'crackvault_players',
   SCORES: 'crackvault_scores',
   SETTINGS: 'crackvault_settings',
+  DELETED_SESSIONS: 'crackvault_deleted_sessions',
   CLEAN_V7: 'crackvault_clean_v7'
+}
+
+// Track deleted session IDs to prevent zombie resurrection across cloud sync cycles
+export function markSessionDeleted(sessionId: string) {
+  if (typeof localStorage === 'undefined' || !sessionId) return
+  try {
+    const raw = localStorage.getItem(KEYS.DELETED_SESSIONS)
+    const map: Record<string, number> = raw ? JSON.parse(raw) : {}
+    map[sessionId] = Date.now()
+    // Retain tombstone for 7 days then prune
+    const cutoff = Date.now() - 7 * 86400000
+    for (const id in map) {
+      if (map[id] < cutoff) delete map[id]
+    }
+    localStorage.setItem(KEYS.DELETED_SESSIONS, JSON.stringify(map))
+    broadcastStateChange('SESSION_DELETED', sessionId)
+  } catch {}
+}
+
+export function isSessionDeleted(sessionId: string): boolean {
+  if (typeof localStorage === 'undefined' || !sessionId) return false
+  try {
+    const raw = localStorage.getItem(KEYS.DELETED_SESSIONS)
+    if (!raw) return false
+    const map: Record<string, number> = JSON.parse(raw)
+    return Boolean(map[sessionId])
+  } catch {
+    return false
+  }
 }
 
 // Default Seed Challenges: Clean slate (0 challenges)
@@ -235,16 +267,27 @@ export const storage = {
     }
     try {
       const parsed = JSON.parse(raw)
-      return Array.isArray(parsed) ? parsed.filter((s) => s && s.id && s.joinCode) : []
+      return Array.isArray(parsed)
+        ? parsed.filter((s) => s && s.id && s.joinCode && !isSessionDeleted(s.id))
+        : []
     } catch {
       return []
     }
   },
 
   saveSessions(sessions: GameSession[]) {
-    localStorage.setItem(KEYS.SESSIONS, JSON.stringify(sessions))
+    const clean = sessions.filter((s) => s && s.id && !isSessionDeleted(s.id))
+    localStorage.setItem(KEYS.SESSIONS, JSON.stringify(clean))
     broadcastStateChange('SESSIONS_UPDATED')
-    apiSyncSessions(sessions).catch(() => {})
+    apiSyncSessions(clean).catch(() => {})
+  },
+
+  deleteSession(sessionId: string) {
+    markSessionDeleted(sessionId)
+    const current = this.getSessions().filter((s) => s.id !== sessionId)
+    localStorage.setItem(KEYS.SESSIONS, JSON.stringify(current))
+    broadcastStateChange('SESSIONS_UPDATED')
+    apiDeleteSession(sessionId).catch(() => {})
   },
 
   getPlayers(): GamePlayer[] {
@@ -301,6 +344,7 @@ export const storage = {
     }
     scores.unshift(newEntry)
     this.saveScores(scores)
+    apiSaveScore(newEntry).catch(() => {})
     return newEntry
   },
 
@@ -364,22 +408,32 @@ export function reconcileSessions(
   const map = new Map<string, GameSession>()
   let needsPushToRemote = false
 
-  // 1. Index remote sessions
+  // 1. Index remote sessions (strictly ignoring any session marked as deleted)
   remote.forEach((r) => {
     if (r && r.id) {
-      map.set(r.id, r)
+      if (isSessionDeleted(r.id)) {
+        // Actively clean up remote if it was marked deleted locally
+        apiDeleteSession(r.id).catch(() => {})
+      } else {
+        map.set(r.id, r)
+      }
     }
   })
 
   // 2. Reconcile with local sessions
   local.forEach((l) => {
-    if (!l || !l.id) return
+    if (!l || !l.id || isSessionDeleted(l.id)) return
     const r = map.get(l.id)
     if (!r) {
-      // Local has a session that remote doesn't have yet (e.g. newly launched in UI)
-      // KEEP IT! Never delete active sessions from local if remote is empty or lagging
-      map.set(l.id, l)
-      needsPushToRemote = true
+      // Local has a session that remote doesn't have yet.
+      // ONLY keep and push if it was created very recently (< 25s ago) while first remote save is in flight.
+      const ageMs = l.createdAt ? Date.now() - new Date(l.createdAt).getTime() : 999999
+      if (ageMs < 25000) {
+        map.set(l.id, l)
+        needsPushToRemote = true
+      }
+      // If older than 25s and remote doesn't have it, it was deleted on remote.
+      // Never resurrect it or push it back to remote!
     } else {
       // Both have the session: resolve conflicting states intelligently
       const statusWeight = (status?: string) => {
@@ -396,7 +450,7 @@ export function reconcileSessions(
         map.set(l.id, { ...r, ...l })
         needsPushToRemote = true
       } else if (rWeight > lWeight) {
-        // Remote is ahead (e.g. ended by host)
+        // Remote is ahead (e.g. paused or ended by host)
         map.set(l.id, { ...l, ...r })
       } else {
         // Equal status: pick whichever has more hints/winner or keep local challenge attached
@@ -414,7 +468,8 @@ export function reconcileSessions(
     }
   })
 
-  return { merged: Array.from(map.values()), needsPushToRemote }
+  const merged = Array.from(map.values()).filter((s) => !isSessionDeleted(s.id))
+  return { merged, needsPushToRemote }
 }
 
 // --- CLOUD SYNC INITIALIZATION & LISTENER SUBSCRIPTION ---
@@ -498,14 +553,38 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
         }
       }
 
-      // Reconcile Scores
+      // Reconcile Scores (Never wipe locally recorded scores!)
       if (remoteScores && Array.isArray(remoteScores)) {
         const local = storage.getScores()
-        const sorted = [...remoteScores].sort((a, b) => (b.score || 0) - (a.score || 0))
-        if (sorted.length !== local.length || (sorted[0]?.id !== local[0]?.id)) {
-          localStorage.setItem(KEYS.SCORES, JSON.stringify(sorted))
+        const scoreMap = new Map<string, ScoreEntry>()
+
+        // 1. Index remote scores
+        remoteScores.forEach((s) => {
+          if (s && s.id) scoreMap.set(s.id, s)
+        })
+
+        // 2. Preserve any local scores that remote doesn't have yet
+        let needsPushScores = false
+        local.forEach((l) => {
+          if (!l || !l.id) return
+          if (!scoreMap.has(l.id)) {
+            scoreMap.set(l.id, l)
+            needsPushScores = true
+          }
+        })
+
+        const mergedScores = Array.from(scoreMap.values()).sort((a, b) => (b.score || 0) - (a.score || 0))
+        const localSig = local.map((s) => `${s.id}:${s.score}`).join('|')
+        const mergedSig = mergedScores.map((s) => `${s.id}:${s.score}`).join('|')
+
+        if (localSig !== mergedSig) {
+          localStorage.setItem(KEYS.SCORES, JSON.stringify(mergedScores))
           broadcastStateChange('SCORES_UPDATED')
           onSyncEvent?.('SCORES_UPDATED')
+        }
+
+        if (needsPushScores && mergedScores.length > 0) {
+          apiSyncScores(mergedScores).catch(() => {})
         }
       }
     } catch {

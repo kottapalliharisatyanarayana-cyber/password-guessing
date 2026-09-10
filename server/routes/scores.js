@@ -1,4 +1,5 @@
 import express from 'express'
+import mongoose from 'mongoose'
 import { Score } from '../models/Score.js'
 
 const router = express.Router()
@@ -6,17 +7,20 @@ const memoryScores = new Map()
 
 // GET /api/scores
 router.get('/', async (req, res) => {
-  try {
-    const filter = req.query.sessionId ? { sessionId: req.query.sessionId } : {}
-    const scores = await Score.find(filter).sort({ score: -1, solveTime: 1 }).limit(100)
-    scores.forEach((s) => memoryScores.set(s.id, s.toObject ? s.toObject() : s))
-    return res.json(scores)
-  } catch (err) {
-    console.warn('⚠️ [Scores API] MongoDB read error, serving from memory:', err.message)
-    let all = Array.from(memoryScores.values()).sort((a, b) => (b.score || 0) - (a.score || 0))
-    if (req.query.sessionId) all = all.filter((s) => s.sessionId === req.query.sessionId)
-    return res.json(all)
+  if (mongoose.connection.readyState === 1) {
+    try {
+      const filter = req.query.sessionId ? { sessionId: req.query.sessionId } : {}
+      const scores = await Score.find(filter).sort({ score: -1, solveTime: 1 }).limit(100)
+      scores.forEach((s) => memoryScores.set(s.id, s.toObject ? s.toObject() : s))
+      return res.json(scores)
+    } catch (err) {
+      console.warn('⚠️ [Scores API] MongoDB read error, serving from memory:', err.message)
+    }
   }
+
+  let all = Array.from(memoryScores.values()).sort((a, b) => (b.score || 0) - (a.score || 0))
+  if (req.query.sessionId) all = all.filter((s) => s.sessionId === req.query.sessionId)
+  return res.json(all)
 })
 
 // POST /api/scores
@@ -37,17 +41,20 @@ router.post('/', async (req, res) => {
 
   memoryScores.set(normalized.id, normalized)
 
-  try {
-    const score = await Score.findOneAndUpdate(
-      { id: normalized.id },
-      { $set: normalized },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
-    )
-    return res.json(score || normalized)
-  } catch (err) {
-    console.warn('⚠️ [Scores API] MongoDB save error, served from memory:', err.message)
-    return res.json(normalized)
+  if (mongoose.connection.readyState === 1) {
+    try {
+      const score = await Score.findOneAndUpdate(
+        { id: normalized.id },
+        { $set: normalized },
+        { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
+      )
+      return res.json(score || normalized)
+    } catch (err) {
+      console.warn('⚠️ [Scores API] MongoDB save error, served from memory:', err.message)
+    }
   }
+
+  return res.json(normalized)
 })
 
 // POST /api/scores/batch
