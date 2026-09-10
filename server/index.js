@@ -124,9 +124,9 @@ export async function connectToDatabase() {
   return connectionPromise
 }
 
-// Ensure database connection middleware for all /api calls
+// Ensure database connection middleware for all API calls
 app.use(async (req, res, next) => {
-  if (req.path.startsWith('/api') && req.path !== '/api/health') {
+  if (req.path !== '/api/health' && req.path !== '/health') {
     if (mongoose.connection.readyState !== 1) {
       try {
         await connectToDatabase()
@@ -157,8 +157,8 @@ mongoose.connection.on('disconnected', () => {
 // Kick off initial connection
 connectToDatabase().catch(() => {})
 
-// Health Route
-app.get('/api/health', (req, res) => {
+// Health Route (handles both /api/health and /health)
+const handleHealth = (req, res) => {
   res.json({
     status: 'ok',
     service: 'crackvault-backend',
@@ -169,10 +169,12 @@ app.get('/api/health', (req, res) => {
       host: mongoose.connection.host || 'unknown'
     }
   })
-})
+}
+app.get('/api/health', handleHealth)
+app.get('/health', handleHealth)
 
 // Reset All Route
-app.post('/api/reset-all', async (req, res) => {
+const handleResetAll = async (req, res) => {
   try {
     await Promise.all([
       Session.deleteMany({}),
@@ -186,14 +188,25 @@ app.post('/api/reset-all', async (req, res) => {
     console.error('❌ [Reset API] Error resetting database:', err.message)
     return res.status(500).json({ error: err.message })
   }
-})
+}
+app.post('/api/reset-all', handleResetAll)
+app.post('/reset-all', handleResetAll)
 
-// API Routes
+// API Routes (Mounted on both /api/* and /* for full Vercel rewrite compatibility)
 app.use('/api/sessions', sessionsRouter)
+app.use('/sessions', sessionsRouter)
+
 app.use('/api/players', playersRouter)
+app.use('/players', playersRouter)
+
 app.use('/api/challenges', challengesRouter)
+app.use('/challenges', challengesRouter)
+
 app.use('/api/scores', scoresRouter)
+app.use('/scores', scoresRouter)
+
 app.use('/api/settings', settingsRouter)
+app.use('/settings', settingsRouter)
 
 // Start Server (standalone Node process)
 if (!process.env.VERCEL) {

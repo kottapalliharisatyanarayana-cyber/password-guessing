@@ -67,12 +67,12 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
         </div>
 
         <h2 style={{ fontSize: '1.75rem', fontFamily: 'var(--font-display)', marginBottom: '0.35rem', color: '#fff' }}>
-          {isWinner ? 'VAULT COMPROMISED!' : 'ROUND CONCLUDED'}
+          {isWinner ? 'VAULT COMPROMISED!' : 'MISSION TIME EXPIRED'}
         </h2>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.75rem' }}>
           {isWinner
-            ? `First-place breach authenticated in ${elapsed}s! You cracked the system fastest.`
-            : `Vault breached by ${winnerName || 'another player'}. Better luck in the next session!`}
+            ? `Breach authenticated in ${elapsed}s! You cracked the system.`
+            : `Mission countdown reached zero before the vault could be cracked.`}
         </p>
 
         {/* Final Score Hero */}

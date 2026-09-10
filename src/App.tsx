@@ -264,32 +264,40 @@ export function App() {
         : Math.max(1, currentSession.totalSeconds - (currentSession.remainingSeconds || 0))
       const finalScore = calculateScore(solveTime, currentSession.totalSeconds, newAttempts, activePlayer.revealedHints)
 
-      // Update Player with solveTime and score
-      const updatedPlayers = players.map((p) => {
-        if (p.id === activePlayer.id) {
-          return { ...p, attempts: newAttempts, status: 'solved' as const, score: finalScore, solveTime }
-        }
-        if (p.sessionId === activeSessionId || (currentSession && p.joinCode === currentSession.joinCode)) {
-          return { ...p, status: 'failed' as const }
-        }
-        return p
-      })
+      // Update ONLY the solving player with solveTime and score; all other players continue playing!
+      const updatedPlayerRecord: GamePlayer = {
+        ...activePlayer,
+        attempts: newAttempts,
+        status: 'solved' as const,
+        score: finalScore,
+        solveTime
+      }
+      const updatedPlayers = players.map((p) =>
+        p.id === activePlayer.id ? updatedPlayerRecord : p
+      )
       setPlayers(updatedPlayers)
       storage.savePlayers(updatedPlayers)
+      apiSavePlayer(updatedPlayerRecord).catch(() => {})
 
-      // End Session
+      // Record first solver as winnerName/winnerScore if not yet set, but session remains ACTIVE and PLAYING so all other players can continue guessing!
+      const isFirstSolver = !currentSession.winnerName
       const updatedSessions = sessions.map((s) =>
         s.id === activeSessionId
           ? {
               ...s,
-              status: 'ended' as const,
-              winnerName: activePlayer.name,
-              winnerScore: finalScore
+              winnerName: s.winnerName || activePlayer.name,
+              winnerScore: s.winnerScore !== undefined ? s.winnerScore : finalScore
             }
           : s
       )
       setSessions(updatedSessions)
       storage.saveSessions(updatedSessions)
+      if (isFirstSolver) {
+        apiUpdateSession(activeSessionId, {
+          winnerName: activePlayer.name,
+          winnerScore: finalScore
+        }).catch(() => {})
+      }
 
       // Add to Global Leaderboard
       const newScore = storage.addScore({

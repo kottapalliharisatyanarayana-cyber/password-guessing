@@ -31,17 +31,22 @@ export const PlayerArena: React.FC<PlayerArenaProps> = ({
 }) => {
   const [attempts, setAttempts] = useState<AttemptLog[]>([])
   const [revealedHints, setRevealedHints] = useState<number[]>(player.revealedHints || [])
-  const [secondsRemaining, setSecondsRemaining] = useState<number>(session.remainingSeconds)
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(() => {
+    if (session.status === 'playing' && session.startedAt) {
+      return Math.max(0, session.totalSeconds - Math.floor((Date.now() - session.startedAt) / 1000))
+    }
+    return session.remainingSeconds ?? session.totalSeconds ?? 300
+  })
   const [isWon, setIsWon] = useState<boolean>(player.status === 'solved')
-  const [isLost, setIsLost] = useState<boolean>(player.status === 'failed' || session.status === 'ended')
+  const [isLost, setIsLost] = useState<boolean>(player.status === 'failed')
   const [showVictoryModal, setShowVictoryModal] = useState<boolean>(false)
 
-  // Keep remaining time synced with session updates
+  // Keep remaining time synced when mission broadcast is paused by admin
   useEffect(() => {
-    if (session.remainingSeconds !== undefined) {
+    if (session.status === 'paused' && session.remainingSeconds !== undefined) {
       setSecondsRemaining(session.remainingSeconds)
     }
-  }, [session.remainingSeconds])
+  }, [session.status, session.remainingSeconds])
 
   // Keep revealed hints synced with player prop
   useEffect(() => {
@@ -71,16 +76,6 @@ export const PlayerArena: React.FC<PlayerArenaProps> = ({
 
   // Synchronized Room Mission Elapsed Time
   const missionElapsedSeconds = Math.max(0, session.totalSeconds - secondsRemaining)
-
-  // Watch for session ending or another player winning
-  useEffect(() => {
-    if (session.status === 'ended') {
-      if (!isWon) {
-        setIsLost(true)
-        setShowVictoryModal(true)
-      }
-    }
-  }, [session.status, isWon])
 
   // Format seconds to mm:ss
   const formatTime = (secs: number) => {
