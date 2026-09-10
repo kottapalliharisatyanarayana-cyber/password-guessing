@@ -1,4 +1,5 @@
 import express from 'express'
+import mongoose from 'mongoose'
 import { Player } from '../models/Player.js'
 
 const router = express.Router()
@@ -6,24 +7,27 @@ const memoryPlayers = new Map()
 
 // GET /api/players
 router.get('/', async (req, res) => {
-  try {
-    const filter = {}
-    if (req.query.sessionId) filter.sessionId = req.query.sessionId
-    if (req.query.joinCode) filter.joinCode = req.query.joinCode.toUpperCase()
-    const players = await Player.find(filter).sort({ score: -1, solveTime: 1 })
-    players.forEach((p) => memoryPlayers.set(p.id, p.toObject ? p.toObject() : p))
-    return res.json(players)
-  } catch (err) {
-    console.warn('⚠️ [Players API] MongoDB read error, serving from memory:', err.message)
-    let all = Array.from(memoryPlayers.values())
-    if (req.query.sessionId) all = all.filter((p) => p.sessionId === req.query.sessionId)
-    if (req.query.joinCode) {
-      all = all.filter(
-        (p) => p.joinCode && p.joinCode.toUpperCase() === req.query.joinCode.toUpperCase()
-      )
+  if (mongoose.connection.readyState === 1) {
+    try {
+      const filter = {}
+      if (req.query.sessionId) filter.sessionId = req.query.sessionId
+      if (req.query.joinCode) filter.joinCode = req.query.joinCode.toUpperCase()
+      const players = await Player.find(filter).sort({ score: -1, solveTime: 1 })
+      players.forEach((p) => memoryPlayers.set(p.id, p.toObject ? p.toObject() : p))
+      return res.json(players)
+    } catch (err) {
+      console.warn('⚠️ [Players API] MongoDB read error, serving from memory:', err.message)
     }
-    return res.json(all)
   }
+
+  let all = Array.from(memoryPlayers.values())
+  if (req.query.sessionId) all = all.filter((p) => p.sessionId === req.query.sessionId)
+  if (req.query.joinCode) {
+    all = all.filter(
+      (p) => p.joinCode && p.joinCode.toUpperCase() === req.query.joinCode.toUpperCase()
+    )
+  }
+  return res.json(all)
 })
 
 // POST /api/players

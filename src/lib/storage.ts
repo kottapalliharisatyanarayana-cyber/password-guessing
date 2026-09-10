@@ -447,7 +447,7 @@ export function reconcileSessions(
   const map = new Map<string, GameSession>()
   let needsPushToRemote = false
 
-  // 1. Index remote sessions (strictly ignoring any session marked as deleted)
+  // 1. Index remote sessions (strictly ignoring any session marked as deleted locally)
   remote.forEach((r) => {
     if (r && r.id) {
       if (isSessionDeleted(r.id)) {
@@ -459,34 +459,39 @@ export function reconcileSessions(
     }
   })
 
-  // 2. Reconcile with local sessions
+  // 2. Reconcile with local sessions (preserve local sessions, never drop unless explicitly deleted)
   local.forEach((l) => {
     if (!l || !l.id || isSessionDeleted(l.id)) return
     const r = map.get(l.id)
     if (!r) {
-      // Local has a session that remote doesn't have yet.
-      // ONLY keep and push if it was created very recently (< 25s ago) while first remote save is in flight.
-      const ageMs = l.createdAt ? Date.now() - new Date(l.createdAt).getTime() : 999999
-      if (ageMs < 25000) {
-        map.set(l.id, l)
-        needsPushToRemote = true
-      }
-      // If older than 25s and remote doesn't have it, it was deleted on remote.
-      // Never resurrect it or push it back to remote!
+      // Local session not present on remote yet:
+      // Keep it in active state and ensure it gets pushed to remote backend
+      map.set(l.id, l)
+      needsPushToRemote = true
     } else {
-      // Both have the session: Remote (server) is the authoritative source of truth for status and timing.
-      // Never allow a client tab to override the host's pause, stop, or reset signal!
+      // Both have the session: merge status, timers, and attributes intelligently
       const lHints = l.forceUnlockedHints?.length || 0
       const rHints = r.forceUnlockedHints?.length || 0
+      const winnerName = r.winnerName || l.winnerName
+      const winnerScore = r.winnerScore !== undefined ? r.winnerScore : l.winnerScore
+
+      // Status resolution: if local was started/playing or paused, don't revert to lobby unless explicitly reset
+      const statusPriority: Record<string, number> = { ended: 4, playing: 3, paused: 2, lobby: 1 }
+      const rPrio = statusPriority[r.status] || 1
+      const lPrio = statusPriority[l.status] || 1
+      const finalStatus = rPrio >= lPrio ? r.status : l.status
+
       map.set(l.id, {
         ...l,
         ...r,
+        status: finalStatus,
         startedAt: r.status === 'lobby' ? undefined : (r.startedAt ?? l.startedAt),
         remainingSeconds: r.remainingSeconds !== undefined ? r.remainingSeconds : (l.remainingSeconds ?? l.totalSeconds),
+        totalSeconds: r.totalSeconds || l.totalSeconds || 300,
         challenge: l.challenge || r.challenge,
-        forceUnlockedHints: rHints >= lHints ? r.forceUnlockedHints : l.forceUnlockedHints,
-        winnerName: r.winnerName || l.winnerName,
-        winnerScore: r.winnerScore !== undefined ? r.winnerScore : l.winnerScore
+        forceUnlockedHints: rHints >= lHints ? (r.forceUnlockedHints || []) : (l.forceUnlockedHints || []),
+        winnerName,
+        winnerScore
       })
     }
   })
@@ -564,7 +569,7 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
         }
       }
 
-      // Reconcile Challenges
+      // Reconcile Challenges non-destructively (never wipe local challenges)
       if (remoteChallenges && Array.isArray(remoteChallenges)) {
         const cleanRemote = remoteChallenges.filter((c) => {
           if (c && c.id && isChallengeDeleted(c.id)) {
@@ -574,12 +579,34 @@ export function initCloudSync(onSyncEvent?: (type: string) => void): () => void 
           return c && c.id
         })
         const local = storage.getChallenges()
-        if (cleanRemote.length !== local.length || cleanRemote.some((c, i) => !local[i] || c.id !== local[i].id)) {
+
+        const challengeMap = new Map<string, Challenge>()
+        cleanRemote.forEach((c) => challengeMap.set(c.id, c))
+
+        let needsPushChallenges = false
+        local.forEach((l) => {
+          if (!l || !l.id || isChallengeDeleted(l.id)) return
+          if (!challengeMap.has(l.id)) {
+            // Local challenge exists and hasn't been deleted: preserve it and push up!
+            challengeMap.set(l.id, l)
+            needsPushChallenges = true
+          }
+        })
+
+        const mergedChallenges = Array.from(challengeMap.values())
+        const localSig = local.map((c) => `${c.id}:${c.title}:${c.password}`).sort().join('|')
+        const mergedSig = mergedChallenges.map((c) => `${c.id}:${c.title}:${c.password}`).sort().join('|')
+
+        if (localSig !== mergedSig) {
           try {
-            localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(cleanRemote))
+            localStorage.setItem(KEYS.CHALLENGES, JSON.stringify(mergedChallenges))
           } catch {}
           broadcastStateChange('CHALLENGES_UPDATED')
           onSyncEvent?.('CHALLENGES_UPDATED')
+        }
+
+        if (needsPushChallenges && mergedChallenges.length > 0) {
+          apiSyncChallenges(mergedChallenges).catch(() => {})
         }
       }
 

@@ -1,4 +1,5 @@
 import express from 'express'
+import mongoose from 'mongoose'
 import { Challenge } from '../models/Challenge.js'
 import { Session } from '../models/Session.js'
 
@@ -7,15 +8,18 @@ const memoryChallenges = new Map()
 
 // GET /api/challenges
 router.get('/', async (req, res) => {
-  try {
-    const challenges = await Challenge.find().sort({ createdAt: -1 })
-    memoryChallenges.clear()
-    challenges.forEach((c) => memoryChallenges.set(c.id, c.toObject ? c.toObject() : c))
-    return res.json(challenges)
-  } catch (err) {
-    console.warn('⚠️ [Challenges API] MongoDB read error, serving from memory:', err.message)
-    return res.json(Array.from(memoryChallenges.values()))
+  if (mongoose.connection.readyState === 1) {
+    try {
+      const challenges = await Challenge.find().sort({ createdAt: -1 })
+      if (challenges && challenges.length > 0) {
+        challenges.forEach((c) => memoryChallenges.set(c.id, c.toObject ? c.toObject() : c))
+        return res.json(challenges)
+      }
+    } catch (err) {
+      console.warn('⚠️ [Challenges API] MongoDB read error, serving from memory:', err.message)
+    }
   }
+  return res.json(Array.from(memoryChallenges.values()))
 })
 
 // POST /api/challenges

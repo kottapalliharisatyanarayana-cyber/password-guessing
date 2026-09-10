@@ -13,12 +13,10 @@ router.get('/', async (req, res) => {
     try {
       const query = req.query.status ? { status: req.query.status } : {}
       const sessions = await Session.find(query).sort({ updatedAt: -1 }).limit(100)
-      // Update memory cache without clearing on filtered requests
-      if (!req.query.status) {
-        memorySessions.clear()
+      if (sessions && sessions.length > 0) {
+        sessions.forEach((s) => memorySessions.set(s.id, s.toObject ? s.toObject() : s))
+        return res.json(sessions)
       }
-      sessions.forEach((s) => memorySessions.set(s.id, s.toObject ? s.toObject() : s))
-      return res.json(sessions)
     } catch (err) {
       console.warn('⚠️ [Sessions API] MongoDB read error, serving from memory cache:', err.message)
     }
@@ -158,7 +156,7 @@ router.patch('/:id', async (req, res) => {
       const session = await Session.findOneAndUpdate(
         { id: req.params.id },
         { $set: req.body },
-        { returnDocument: 'after' }
+        { returnDocument: 'after', upsert: true }
       )
       if (session) return res.json(session)
     } catch (err) {
